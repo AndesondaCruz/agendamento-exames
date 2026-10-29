@@ -1,0 +1,21 @@
+# Dependências e builds
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Variáveis de ambiente (NUNCA versionar segredos; use .env.example)
+.env
+.env.*
+!.env.example
+
+# Logs e sistema
+*.log
+npm-debug.log*
+.DS_Store
+
+# Editores
+.vscode/*
+!.vscode/extensions.json
+.idea/
