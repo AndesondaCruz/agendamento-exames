@@ -1,15 +1,12 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import {
-  ApiBadRequestResponse,
-  ApiNotFoundResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
-import { ErrorResponseDto } from '../common/http/error-response.dto.js';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ErrorCode } from '../common/errors/error-codes.js';
+import { ApiErrorResponse } from '../common/http/api-error.decorator.js';
 import { AvailabilityService } from './availability.service.js';
 import { AvailabilityQuery, DoctorIdParam } from './dto/availability.query.js';
 import { AvailabilityResponse } from './dto/availability.response.js';
+
+const PATH = '/api/doctors/1/availability';
 
 @ApiTags('Médicos')
 @Controller('doctors')
@@ -19,16 +16,24 @@ export class AvailabilityController {
   @Get(':doctorId/availability')
   @ApiOperation({
     summary: 'Horários livres do médico para um exame numa data',
+    description:
+      'Datas passadas, dias sem atendimento ou sem horários livres retornam 200 com `slots: []` e o motivo em `unavailableReason`.',
   })
   @ApiOkResponse({ type: AvailabilityResponse })
-  @ApiBadRequestResponse({
-    type: ErrorResponseDto,
-    description: 'Parâmetros ou data inválidos',
-  })
-  @ApiNotFoundResponse({
-    type: ErrorResponseDto,
-    description: 'Médico ou exame inexistente',
-  })
+  @ApiErrorResponse(400, PATH, 'Parâmetros ou data inválidos', [
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'Dados inválidos na requisição.',
+      details: [
+        { field: 'date', messages: ['date deve estar no formato YYYY-MM-DD.'] },
+      ],
+    },
+    { code: ErrorCode.INVALID_DATE, message: 'Data inválida: "2030-02-30".' },
+  ])
+  @ApiErrorResponse(404, PATH, 'Médico ou exame inexistente', [
+    { code: ErrorCode.DOCTOR_NOT_FOUND, message: 'Médico 99 não encontrado.' },
+    { code: ErrorCode.EXAM_NOT_FOUND, message: 'Exame 999 não encontrado.' },
+  ])
   getAvailability(
     @Param() { doctorId }: DoctorIdParam,
     @Query() { examId, date }: AvailabilityQuery,

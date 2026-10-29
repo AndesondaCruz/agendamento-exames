@@ -4,29 +4,45 @@ class FieldErrorDto {
   @ApiProperty({ example: 'startsAt' })
   field: string;
 
-  @ApiProperty({ example: ['startsAt deve ser uma data ISO 8601 com fuso.'] })
+  @ApiProperty({
+    example: [
+      'startsAt deve informar o fuso (ex.: 2030-01-07T08:00:00-03:00).',
+    ],
+  })
   messages: string[];
 }
 
-/** Documenta no Swagger o formato único de erro da API. */
+/**
+ * Formato único de erro da API (o schema). Os EXEMPLOS de cada endpoint
+ * ficam no decorator ApiErrorResponse, com os códigos que ele realmente
+ * devolve.
+ */
 export class ErrorResponseDto {
-  @ApiProperty({ example: 409 })
+  @ApiProperty({ description: 'Status HTTP', example: 400 })
   statusCode: number;
 
-  @ApiProperty({ example: 'SLOT_UNAVAILABLE' })
+  @ApiProperty({
+    description:
+      'Código estável do erro (use este campo, não a mensagem, para decidir o que fazer)',
+    example: 'VALIDATION_ERROR',
+  })
   code: string;
 
   @ApiProperty({
-    example: 'Este horário acabou de ser reservado. Escolha outro.',
+    description: 'Mensagem legível',
+    example: 'Dados inválidos na requisição.',
   })
   message: string;
 
-  @ApiPropertyOptional({ type: [FieldErrorDto] })
+  @ApiPropertyOptional({
+    type: [FieldErrorDto],
+    description: 'Presente em VALIDATION_ERROR: campos inválidos e os motivos',
+  })
   details?: FieldErrorDto[];
 
   @ApiProperty({ example: '/api/appointments' })
   path: string;
 
-  @ApiProperty({ example: '2030-01-07T11:00:00.000Z' })
+  @ApiProperty({ example: '2030-01-07T13:00:00.000Z' })
   timestamp: string;
 }
