@@ -10,6 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Scripts .sql daqui rodam na primeira inicialização (cria o banco de teste).
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d agendamento"]
       interval: 5s
