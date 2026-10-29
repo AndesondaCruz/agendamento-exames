@@ -1,0 +1,31 @@
+id,nome,duracao_minutos
+1,Raio-X de Tórax,20
+2,Raio-X de Coluna Lombar,20
+3,Raio-X de Crânio,20
+4,Raio-X de Joelho,20
+5,Raio-X de Abdome,20
+6,Mamografia Bilateral,30
+7,Ultrassonografia Abdominal Total,40
+8,Ultrassonografia Transvaginal,40
+9,Ultrassonografia de Tireoide,30
+10,Ultrassonografia de Mama,30
+11,Ultrassonografia Obstétrica,40
+12,Ultrassonografia de Próstata,30
+13,Ultrassonografia de Rins e Vias Urinárias,30
+14,Doppler de Carótidas,40
+15,Doppler Venoso de Membros Inferiores,40
+16,Ecocardiograma com Doppler,40
+17,Tomografia Computadorizada de Crânio,40
+18,Tomografia Computadorizada de Tórax,40
+19,Tomografia Computadorizada de Abdome,40
+20,Ressonância Magnética de Crânio,40
+21,Ressonância Magnética de Joelho,40
+22,Ressonância Magnética de Coluna Lombar,40
+23,Ressonância Magnética de Ombro,40
+24,Densitometria Óssea,30
+25,Cintilografia Óssea,40
+26,Cintilografia Miocárdica,40
+27,Angiotomografia Coronariana,40
+28,Mamografia Digital com Tomossíntese,30
+29,Ultrassonografia de Articulações,30
+30,Raio-X Panorâmico de Mandíbula,20
