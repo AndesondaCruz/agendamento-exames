@@ -1,0 +1,89 @@
+# Pipeline de integração contínua.
+#
+# Roda em todo Pull Request para a main e em todo push na main.
+# Um PR só deve ser mergeado com tudo verde: formato, lint, tipos,
+# testes unitários, testes e2e (com Postgres real), build e auditoria.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Um novo push na mesma branch cancela a execução anterior (economiza minutos de CI).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Princípio do menor privilégio: o pipeline só lê o repositório.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (NestJS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    # Postgres de verdade para os testes e2e (mesma versão do docker-compose).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: agendamento_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d agendamento_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://app:app@localhost:5432/agendamento_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node (versão do .nvmrc)
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # O lockfile e o campo allowScripts são do npm 11; o Node 22 vem com o npm 10.
+      - name: Atualizar npm
+        run: npm install -g npm@11
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Formatação (Prettier)
+        run: npm run format:check
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      - name: Tipagem (tsc)
+        run: npm run typecheck
+
+      - name: Testes unitários
+        run: npm test
+
+      - name: Testes e2e (Postgres real)
+        run: npm run test:e2e
+
+      - name: Build
+        run: npm run build
+
+      - name: Auditoria de dependências de produção
+        run: npm audit --omit=dev --audit-level=high

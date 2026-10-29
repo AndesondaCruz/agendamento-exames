@@ -24,7 +24,9 @@
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
     "seed": "tsx src/database/seeds/seed.ts",
-    "db:setup": "npm run migration:run && npm run seed"
+    "db:setup": "npm run migration:run && npm run seed",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
