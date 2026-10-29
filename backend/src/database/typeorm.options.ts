@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import type { DataSourceOptions } from 'typeorm';
 import { Appointment } from '../appointments/entities/appointment.entity.js';
 import { DoctorShift } from '../doctors/entities/doctor-shift.entity.js';
@@ -13,13 +12,10 @@ import type { Env } from '../config/env.js';
  */
 export const entities = [Exam, Doctor, DoctorShift, Appointment];
 
-const migrationsGlob = fileURLToPath(
-  new URL('./migrations/*.{ts,js}', import.meta.url),
-);
-
 /**
- * Fonte única de configuração do TypeORM, usada pelo AppModule (runtime)
- * e pelo data-source.ts (CLI de migrations). Evita que as duas divirjam.
+ * Configuração de CONEXÃO, compartilhada pelo AppModule (runtime) e pelo
+ * data-source.ts (CLI). As migrations NÃO entram aqui: a aplicação nunca as
+ * executa. Elas rodam num passo separado (CLI), antes de a API subir.
  */
 export function buildTypeOrmOptions(
   env: Pick<Env, 'DATABASE_URL' | 'DATABASE_SSL'>,
@@ -29,8 +25,6 @@ export function buildTypeOrmOptions(
     url: env.DATABASE_URL,
     ssl: env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
     entities,
-    migrations: [migrationsGlob],
-    migrationsTableName: 'typeorm_migrations',
     // gen_random_uuid() é nativo desde o Postgres 13: dispensa a extensão uuid-ossp.
     uuidExtension: 'pgcrypto',
     // Extensões são criadas explicitamente na migration, não "magicamente" no
