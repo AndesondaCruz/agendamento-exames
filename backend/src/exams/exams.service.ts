@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CacheKeys, CacheTtl } from '../common/cache/cache-keys.js';
+import { CacheService, type Cached } from '../common/cache/cache.service.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
+import { ExamResponse } from './dto/exam.response.js';
 import { Exam } from './entities/exam.entity.js';
 
 /** Escapa curingas do LIKE: "%" e "_" digitados pelo usuário viram texto literal. */
@@ -15,7 +18,27 @@ export class ExamsService {
   constructor(
     @InjectRepository(Exam)
     private readonly examsRepository: Repository<Exam>,
+    private readonly cache: CacheService,
   ) {}
+
+  /**
+   * Busca do catálogo com cache. "Ressonância", " ressonância " e
+   * "RESSONÂNCIA" viram a mesma chave: a busca já ignora maiúsculas (ILIKE),
+   * então o resultado é idêntico e não faz sentido guardar três cópias.
+   */
+  async searchCatalog(term?: string): Promise<Cached<ExamResponse[]>> {
+    const normalized = (term ?? '').trim().toLowerCase();
+    const version = await this.cache.version(CacheKeys.catalogVersion);
+
+    return this.cache.getOrLoad(
+      CacheKeys.examSearch(version, normalized),
+      CacheTtl.CATALOG,
+      async () => {
+        const exams = await this.search(normalized || undefined);
+        return exams.map((exam) => ExamResponse.from(exam));
+      },
+    );
+  }
 
   /**
    * Busca por trecho do nome, ignorando maiúsculas (ILIKE) e acentos

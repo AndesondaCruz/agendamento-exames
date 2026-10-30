@@ -1,5 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import {
+  cacheHeaderDoc,
+  withCacheHeader,
+} from '../common/cache/cache-header.js';
 import { DoctorsService } from './doctors.service.js';
 import { DoctorResponse } from './dto/doctor.response.js';
 
@@ -10,9 +15,10 @@ export class DoctorsController {
 
   @Get()
   @ApiOperation({ summary: 'Lista os médicos com seus turnos semanais' })
-  @ApiOkResponse({ type: [DoctorResponse] })
-  async findAll(): Promise<DoctorResponse[]> {
-    const doctors = await this.doctorsService.findAllWithShifts();
-    return doctors.map((doctor) => DoctorResponse.from(doctor));
+  @ApiOkResponse({ type: [DoctorResponse], headers: cacheHeaderDoc })
+  async findAll(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<DoctorResponse[]> {
+    return withCacheHeader(res, await this.doctorsService.listCatalog());
   }
 }
