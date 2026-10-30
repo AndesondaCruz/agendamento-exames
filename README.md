@@ -75,13 +75,28 @@ Em desenvolvimento o Vite repassa `/api` para `localhost:3000`, então o front n
 
 ## Como testar
 
-| Comando (dentro da pasta) | O que roda | Quantidade |
-| --- | --- | --- |
-| `backend`: `npm test` | Unitários: regra de horários, calendário/fuso, parser do CSV, cache | 59 testes |
-| `backend`: `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 61 testes |
-| `frontend`: `npm test` | Reducer, regras e fluxo completo da página (Testing Library) | 36 testes |
+Os testes e2e usam o Postgres e o Redis do Docker. Da raiz do repositório:
 
-Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`. Precisam de `docker compose up -d --wait postgres redis`.
+```bash
+docker compose up -d --wait postgres redis
+
+cd backend
+npm ci                  # instala as dependências (só na primeira vez)
+npm test
+npm run test:e2e
+
+cd ../frontend
+npm ci
+npm test
+```
+
+| Pasta | Comando | O que roda | Quantidade |
+| --- | --- | --- | --- |
+| `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, parser do CSV, cache | 59 testes |
+| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 61 testes |
+| `frontend` | `npm test` | Reducer, regras e fluxo completo da página (Testing Library) | 36 testes |
+
+Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`.
 
 > Se o volume do Postgres já existia antes do script de criação do banco de teste, crie-o uma vez com:
 > `docker exec agendamento-db createdb -U app agendamento_test`
@@ -366,4 +381,4 @@ Fora do escopo do desafio, mas o que eu faria num sistema real:
 
 ### Uso de IA
 
-Usei a IA (Claude) como assitente de programação e mentor técnico durante o desafio: para discutir alternativas de arquitetura, revisar código, investigar erros e escrever testes. As decisões foram minhas, e todo o código foi revisado, executado e testado por mim antes de cada commit.
+Usei IA (Claude) como par de programação e mentor técnico durante todo o desafio: para discutir alternativas de arquitetura, revisar código, investigar erros e escrever testes. As decisões foram minhas, e todo o código foi revisado, executado e testado por mim antes de cada commit.
