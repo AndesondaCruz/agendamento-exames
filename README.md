@@ -75,13 +75,13 @@ Em desenvolvimento o Vite repassa `/api` para `localhost:3000`, então o front n
 
 ## Como testar
 
-Os testes e2e usam o Postgres e o Redis do Docker. Da raiz do repositório:
+Os testes e2e precisam só do Postgres e do Redis (eles sobem a própria cópia da API). Se você já seguiu a Opção 1, eles já estão rodando e a primeira linha pode ser pulada. Da raiz do repositório:
 
 ```bash
 docker compose up -d --wait postgres redis
 
 cd backend
-npm ci                  # instala as dependências (só na primeira vez)
+npm ci              # dependências
 npm test
 npm run test:e2e
 
