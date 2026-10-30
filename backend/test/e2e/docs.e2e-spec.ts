@@ -8,7 +8,10 @@ interface OpenApiDoc {
       {
         responses: Record<
           string,
-          { content?: Record<string, { examples?: Record<string, unknown> }> }
+          {
+            headers?: Record<string, unknown>;
+            content?: Record<string, { examples?: Record<string, unknown> }>;
+          }
         >;
       }
     >
@@ -55,6 +58,18 @@ describe('Swagger / OpenAPI (e2e)', () => {
       'VALIDATION_ERROR',
     ]);
     expect(doc.paths['/api/exams']?.get?.responses['409']).toBeUndefined();
+  });
+
+  it('as leituras cacheadas documentam o header X-Cache', () => {
+    for (const path of [
+      '/api/exams',
+      '/api/doctors',
+      '/api/doctors/{doctorId}/availability',
+    ]) {
+      expect(doc.paths[path]?.get?.responses['200']?.headers).toHaveProperty(
+        'X-Cache',
+      );
+    }
   });
 
   it('o agendamento documenta cada código de erro possível', () => {

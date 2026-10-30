@@ -4,6 +4,10 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
+import {
+  CacheStore,
+  MemoryCacheStore,
+} from '../../src/common/cache/cache-store.js';
 import { Clock, FixedClock } from '../../src/common/time/clock.js';
 
 /**
@@ -26,10 +30,25 @@ export interface TestApp {
   close: () => Promise<void>;
 }
 
-export async function createTestApp(now: Date = NOW): Promise<TestApp> {
+export interface TestAppOptions {
+  now?: Date;
+  /**
+   * Por padrão cada app de teste tem um cache em memória próprio, então os
+   * testes não dependem de um Redis rodando. Os testes do Redis passam um
+   * RedisCacheStore aqui.
+   */
+  cacheStore?: CacheStore;
+}
+
+export async function createTestApp({
+  now = NOW,
+  cacheStore = new MemoryCacheStore(),
+}: TestAppOptions = {}): Promise<TestApp> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(Clock)
     .useValue(new FixedClock(now))
+    .overrideProvider(CacheStore)
+    .useValue(cacheStore)
     .compile();
 
   const app = moduleRef.createNestApplication({ logger: ['error'] });
@@ -49,8 +68,11 @@ export async function createTestApp(now: Date = NOW): Promise<TestApp> {
       );
       return row.id;
     },
+    // O TRUNCATE apaga direto no banco, sem passar pela invalidação do
+    // service; por isso o cache é limpo junto.
     resetAppointments: async () => {
       await dataSource.query('TRUNCATE TABLE appointments');
+      await cacheStore.clear();
     },
     close: () => app.close(),
   };
