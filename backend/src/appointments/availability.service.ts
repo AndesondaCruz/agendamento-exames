@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, MoreThan, Repository } from 'typeorm';
 import type { Env } from '../config/env.js';
+import { CacheKeys, CacheTtl } from '../common/cache/cache-keys.js';
+import { CacheService, type Cached } from '../common/cache/cache.service.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { Clock } from '../common/time/clock.js';
@@ -35,9 +37,50 @@ export class AvailabilityService {
     private readonly doctorsService: DoctorsService,
     private readonly examsService: ExamsService,
     private readonly clock: Clock,
+    private readonly cache: CacheService,
     config: ConfigService<Env, true>,
   ) {
     this.timezone = config.get('CLINIC_TIMEZONE', { infer: true });
+  }
+
+  /**
+   * Disponibilidade com cache, invalidada a cada agendamento do médico no dia.
+   *
+   * O dia de HOJE não usa cache (BYPASS): a resposta muda sozinha com o
+   * relógio (horários que já passaram saem da lista), e é justamente o dia
+   * em que um dado velho mais atrapalharia o paciente.
+   *
+   * Importante: o cache só serve LEITURA. Mesmo que mostrasse um horário que
+   * acabou de ser ocupado, quem decide o agendamento é a exclusion
+   * constraint do Postgres (409); o cache nunca causa agendamento duplo.
+   */
+  async getAvailability(
+    doctorId: number,
+    examId: number,
+    date: string,
+  ): Promise<Cached<AvailabilityResponse>> {
+    const today = clinicDateOf(this.clock.now(), this.timezone);
+    const load = () => this.computeAvailability(doctorId, examId, date);
+
+    if (date === today) {
+      return { value: await load(), cache: 'BYPASS' };
+    }
+
+    const version = await this.cache.version(
+      CacheKeys.availabilityVersion(doctorId, date),
+    );
+    return this.cache.getOrLoad(
+      CacheKeys.availability({ version, doctorId, date, examId, today }),
+      CacheTtl.AVAILABILITY,
+      load,
+    );
+  }
+
+  /** Chamado após um agendamento: a agenda daquele médico naquele dia mudou. */
+  invalidate(doctorId: number, date: string): Promise<void> {
+    return this.cache.bumpVersion(
+      CacheKeys.availabilityVersion(doctorId, date),
+    );
   }
 
   /**
@@ -45,7 +88,7 @@ export class AvailabilityService {
    * descarta datas passadas e dias sem expediente -> busca os agendamentos
    * do dia -> delega a regra para a função pura generateSlots.
    */
-  async getAvailability(
+  private async computeAvailability(
     doctorId: number,
     examId: number,
     date: string,

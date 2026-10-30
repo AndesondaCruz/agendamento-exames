@@ -1,6 +1,6 @@
 # Ambiente completo com um comando:
 #   docker compose up --build        -> banco + API + front
-#   docker compose up -d postgres     -> só o banco (para desenvolver com npm run start:dev)
+#   docker compose up -d postgres redis -> só banco e cache (para desenvolver com npm run start:dev)
 #
 # Front:   http://localhost:8080
 # API:     http://localhost:3000/api   (Swagger em /api/docs)
@@ -26,6 +26,32 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: agendamento-cache
+    # Cache é descartável, então:
+    #  - sem persistência em disco (--save "" e --appendonly no);
+    #  - limite de 64 MB; ao encher, descarta primeiro as chaves que expiram
+    #    mais cedo (volatile-ttl). Assim os contadores de versão, que têm
+    #    validade longa, são os últimos a sair.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - volatile-ttl
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: ./backend
     container_name: agendamento-api
@@ -38,11 +64,15 @@ services:
       CORS_ORIGIN: http://localhost:8080
       CLINIC_TIMEZONE: America/Sao_Paulo
       RUN_SEED: "true"
+      # Opcional: sem ela (ou vazia), a API usa cache em memória.
+      REDIS_URL: redis://redis:6379
     ports:
       - "3000:3000"
     depends_on:
       postgres:
         # Espera o banco ACEITAR conexões, não só o container iniciar.
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 

@@ -1,5 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import {
+  cacheHeaderDoc,
+  withCacheHeader,
+} from '../common/cache/cache-header.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { ApiErrorResponse } from '../common/http/api-error.decorator.js';
 import { ExamResponse } from './dto/exam.response.js';
@@ -15,7 +20,7 @@ export class ExamsController {
   @ApiOperation({
     summary: 'Busca exames pelo nome (sem a busca, lista o catálogo inteiro)',
   })
-  @ApiOkResponse({ type: [ExamResponse] })
+  @ApiOkResponse({ type: [ExamResponse], headers: cacheHeaderDoc })
   @ApiErrorResponse(400, '/api/exams', 'Termo de busca inválido', [
     {
       code: ErrorCode.VALIDATION_ERROR,
@@ -28,8 +33,15 @@ export class ExamsController {
       ],
     },
   ])
-  async search(@Query() query: SearchExamsQuery): Promise<ExamResponse[]> {
-    const exams = await this.examsService.search(query.search);
-    return exams.map((exam) => ExamResponse.from(exam));
+  // passthrough: o Nest continua serializando o retorno; só usamos `res`
+  // para escrever o header X-Cache.
+  async search(
+    @Query() query: SearchExamsQuery,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ExamResponse[]> {
+    return withCacheHeader(
+      res,
+      await this.examsService.searchCatalog(query.search),
+    );
   }
 }
