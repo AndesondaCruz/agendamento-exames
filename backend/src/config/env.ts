@@ -22,6 +22,14 @@ export const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /** Fuso em que os turnos dos médicos são interpretados. */
   CLINIC_TIMEZONE: z.string().default('America/Sao_Paulo'),
+  /**
+   * Opcional. Com ela, o cache fica no Redis; sem ela, em memória.
+   * Vazia conta como ausente (facilita desligar no docker-compose).
+   */
+  REDIS_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.url({ protocol: /^rediss?$/ }).optional(),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;
