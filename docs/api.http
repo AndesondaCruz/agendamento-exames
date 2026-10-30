@@ -1,0 +1,112 @@
+# Coleção de requisições da API.
+# Funciona com a extensão REST Client do VS Code (humao.rest-client) e nas IDEs
+# JetBrains: clique em "Send Request" acima de cada bloco.
+#
+# Ajuste @date para uma data futura em que o médico atenda.
+# 2026-11-16 é uma segunda-feira (Dra. Helena, id 1, atende 08–12 e 14–18).
+
+@baseUrl = http://localhost:3000/api
+@date = 2026-11-16
+
+### Saúde da API, do banco e do cache
+GET {{baseUrl}}/health
+
+### Catálogo completo de exames
+GET {{baseUrl}}/exams
+
+### Busca por nome (ignora maiúsculas e acentos)
+GET {{baseUrl}}/exams?search=ressonancia
+
+### Médicos e turnos
+GET {{baseUrl}}/doctors
+
+### Horários livres: Dra. Helena + Ultrassonografia Abdominal Total (40 min)
+# Repita a requisição: o header X-Cache passa de MISS para HIT.
+GET {{baseUrl}}/doctors/1/availability?examId=7&date={{date}}
+
+### Dia sem atendimento (domingo): 200 com slots vazios e o motivo
+GET {{baseUrl}}/doctors/1/availability?examId=7&date=2026-11-15
+
+### Agendar (201)
+# Depois deste, a disponibilidade acima volta como MISS e sem o 08:00.
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "Maria da Silva",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "{{date}}T08:00:00-03:00"
+}
+
+### Mesmo horário de novo: 409 SLOT_UNAVAILABLE
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "João Souza",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "{{date}}T08:00:00-03:00"
+}
+
+### Sobreposição parcial com outro exame (Raio-X de 20 min às 08:20): também 409
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "João Souza",
+  "examId": 1,
+  "doctorId": 1,
+  "startsAt": "{{date}}T08:20:00-03:00"
+}
+
+### Fora da grade do exame: 422 SLOT_NOT_ON_GRID (a mensagem lista os horários válidos)
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "João Souza",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "{{date}}T08:10:00-03:00"
+}
+
+### Fora do expediente: 422 OUTSIDE_WORKING_HOURS
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "João Souza",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "{{date}}T12:40:00-03:00"
+}
+
+### No passado: 422 SLOT_IN_PAST
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "João Souza",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "2020-01-06T08:00:00-03:00"
+}
+
+### Dados inválidos: 400 VALIDATION_ERROR com o motivo de cada campo
+POST {{baseUrl}}/appointments
+Content-Type: application/json
+
+{
+  "patientName": "Jo",
+  "examId": 7,
+  "doctorId": 1,
+  "startsAt": "{{date}}T08:40:00"
+}
+
+### Exame inexistente: 404 EXAM_NOT_FOUND
+GET {{baseUrl}}/doctors/1/availability?examId=999&date={{date}}
+
+### Consultar um agendamento (troque pelo id devolvido no POST)
+GET {{baseUrl}}/appointments/00000000-0000-4000-8000-000000000000
