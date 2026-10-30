@@ -15,6 +15,7 @@ import {
 } from '../common/time/clinic-calendar.js';
 import { DoctorsService } from '../doctors/doctors.service.js';
 import { ExamsService } from '../exams/exams.service.js';
+import { AvailabilityService } from './availability.service.js';
 import { generateSlots } from './domain/slot-generator.js';
 import { AppointmentResponse } from './dto/appointment.response.js';
 import type { CreateAppointmentDto } from './dto/create-appointment.dto.js';
@@ -34,6 +35,7 @@ export class AppointmentsService {
     private readonly doctorsService: DoctorsService,
     private readonly examsService: ExamsService,
     private readonly clock: Clock,
+    private readonly availabilityService: AvailabilityService,
     config: ConfigService<Env, true>,
   ) {
     this.timezone = config.get('CLINIC_TIMEZONE', { infer: true });
@@ -70,10 +72,8 @@ export class AppointmentsService {
       );
     }
 
-    const day = parseClinicDay(
-      clinicDateOf(startsAt, this.timezone),
-      this.timezone,
-    )!;
+    const date = clinicDateOf(startsAt, this.timezone);
+    const day = parseClinicDay(date, this.timezone)!;
     const startMinute = minutesSinceDayStart(startsAt, day);
     const shifts = (
       await this.doctorsService.findShifts(doctor.id, day.isoWeekday)
@@ -119,9 +119,15 @@ export class AppointmentsService {
         `Agendamento ${appointment.id} criado: médico ${doctor.id}, exame ${exam.id}, ${startsAt.toISOString()}`,
       );
 
+      // Depois do commit: a próxima consulta de disponibilidade já vem do banco.
+      await this.availabilityService.invalidate(doctor.id, date);
+
       return AppointmentResponse.from(appointment, exam, doctor, this.timezone);
     } catch (error) {
       if (isExclusionViolation(error, APPOINTMENT_NO_OVERLAP_CONSTRAINT)) {
+        // Se houve conflito, o paciente viu uma agenda desatualizada.
+        // Invalida por garantia antes de ele escolher outro horário.
+        await this.availabilityService.invalidate(doctor.id, date);
         throw AppException.conflict(
           ErrorCode.SLOT_UNAVAILABLE,
           'Este horário não está mais disponível para este médico. Escolha outro.',

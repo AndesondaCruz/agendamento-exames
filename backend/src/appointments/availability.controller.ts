@@ -1,5 +1,10 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import {
+  cacheHeaderDoc,
+  withCacheHeader,
+} from '../common/cache/cache-header.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { ApiErrorResponse } from '../common/http/api-error.decorator.js';
 import { AvailabilityService } from './availability.service.js';
@@ -19,7 +24,7 @@ export class AvailabilityController {
     description:
       'Datas passadas, dias sem atendimento ou sem horários livres retornam 200 com `slots: []` e o motivo em `unavailableReason`.',
   })
-  @ApiOkResponse({ type: AvailabilityResponse })
+  @ApiOkResponse({ type: AvailabilityResponse, headers: cacheHeaderDoc })
   @ApiErrorResponse(400, PATH, 'Parâmetros ou data inválidos', [
     {
       code: ErrorCode.VALIDATION_ERROR,
@@ -34,10 +39,14 @@ export class AvailabilityController {
     { code: ErrorCode.DOCTOR_NOT_FOUND, message: 'Médico 99 não encontrado.' },
     { code: ErrorCode.EXAM_NOT_FOUND, message: 'Exame 999 não encontrado.' },
   ])
-  getAvailability(
+  async getAvailability(
     @Param() { doctorId }: DoctorIdParam,
     @Query() { examId, date }: AvailabilityQuery,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<AvailabilityResponse> {
-    return this.availabilityService.getAvailability(doctorId, examId, date);
+    return withCacheHeader(
+      res,
+      await this.availabilityService.getAvailability(doctorId, examId, date),
+    );
   }
 }
