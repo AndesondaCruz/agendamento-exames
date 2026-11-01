@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, MoreThan, Repository } from 'typeorm';
+import { EntityManager, LessThan, MoreThan, Repository } from 'typeorm';
 import type { Env } from '../config/env.js';
 import { CacheKeys, CacheTtl } from '../common/cache/cache-keys.js';
 import { CacheService, type Cached } from '../common/cache/cache.service.js';
@@ -165,11 +165,19 @@ export class AvailabilityService {
   }
 
   /** Agendamentos do médico que tocam o dia, convertidos para minutos do dia. */
-  private async findBusyRanges(
+  /**
+   * Usada em dois lugares, para a regra existir uma vez só: aqui, para listar
+   * os horários livres, e no AppointmentsService, DENTRO da transação do
+   * agendamento (por isso aceita o EntityManager dessa transação).
+   */
+  async findBusyRanges(
     doctorId: number,
     day: ClinicDay,
+    manager?: EntityManager,
   ): Promise<MinuteRange[]> {
-    const appointments = await this.appointmentsRepository.find({
+    const repository =
+      manager?.getRepository(Appointment) ?? this.appointmentsRepository;
+    const appointments = await repository.find({
       select: { startsAt: true, endsAt: true },
       where: {
         doctorId,

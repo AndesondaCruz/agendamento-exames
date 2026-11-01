@@ -93,7 +93,7 @@ npm test
 | Pasta | Comando | O que roda | Quantidade |
 | --- | --- | --- | --- |
 | `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, parser do CSV, cache | 59 testes |
-| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 61 testes |
+| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 63 testes |
 | `frontend` | `npm test` | Reducer, regras e fluxo completo da página (Testing Library) | 36 testes |
 
 Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`.
@@ -104,7 +104,7 @@ Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente
 **O que os testes garantem**, entre outros:
 
 - a grade de horários do enunciado (turnos, durações de 20/30/40 min, horários ocupados, "agora");
-- **20 requisições simultâneas para o mesmo horário: exatamente 1 sucesso e 19 conflitos (409)**;
+- **20 requisições simultâneas para o mesmo horário: exatamente 1 sucesso e 19 conflitos (409)**, inclusive com a constraint do banco removida (a regra também está no código);
 - todas as validações e códigos de erro (400, 404, 409, 422);
 - o cache: HIT/MISS, invalidação após agendar e a API funcionando **com o Redis fora do ar**;
 - a documentação Swagger lista os erros que cada endpoint realmente devolve;
@@ -266,17 +266,24 @@ Turnos são guardados em **minutos do dia** (`08:00` = 480): a geração de hor�
 
 ## Decisões técnicas
 
-### 1. Concorrência garantida pelo banco, não pelo código
+### 1. Concorrência com duas camadas: no código e no banco
 
-A regra "um médico não pode ter dois exames ao mesmo tempo" é uma **exclusion constraint** do PostgreSQL:
+A regra "um médico não pode ter dois exames ao mesmo tempo" é garantida duas vezes, de forma independente:
+
+| Camada | Como funciona | Protege contra |
+| --- | --- | --- |
+| **1. Código** | Dentro de uma transação, a API trava a linha do médico (`SELECT ... FOR UPDATE`) e confere a sobreposição com a mesma função `overlaps` que gera a disponibilidade | Pedidos simultâneos pela API, em qualquer banco relacional com `FOR UPDATE` (Postgres, MySQL...) |
+| **2. Banco** | Uma **exclusion constraint** do PostgreSQL recusa dois intervalos sobrepostos do mesmo médico | O que escapar do código: um bug, um script, outra aplicação gravando no mesmo banco |
 
 ```sql
 EXCLUDE USING gist (doctor_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
 ```
 
-"Não podem existir duas linhas com o mesmo médico **e** intervalos que se sobrepõem." Se duas requisições chegam juntas, o próprio Postgres aceita uma e rejeita a outra (erro `23P01`, que a API traduz para **409**).
+**Por que travar o médico, e não o horário:** um horário livre não tem linha no banco para travar, e por isso "consultar antes de inserir" sozinho tem *race condition* (duas requisições consultam, as duas veem livre, as duas gravam). Travando a linha do médico, pedidos para o **mesmo** médico são processados um de cada vez, enquanto médicos diferentes continuam em paralelo. O lock é do banco, então vale também com várias instâncias da API.
 
-Por que não "consultar antes de inserir": entre o `SELECT` e o `INSERT` outra requisição pode ocupar o horário (*race condition*). Um lock na aplicação não funcionaria com várias instâncias da API. A constraint é atômica, vale para qualquer cliente (inclusive SQL manual) e cobre **sobreposição parcial** entre exames de durações diferentes, não só o mesmo horário de início. O teste de concorrência dispara 20 requisições simultâneas e confirma 1 sucesso e 19 conflitos.
+**Por que manter a constraint:** a regra de negócio não pode depender só de um banco específico (se o banco mudar, a regra continua no código), nem só do código (se algo gravar sem passar pela API, o banco ainda recusa). A violação da constraint (erro `23P01`) também vira **409**, e o log informa qual camada barrou o conflito.
+
+Os testes provam cada camada sozinha: com a constraint **removida**, 20 requisições simultâneas ainda geram exatamente 1 agendamento; e um `INSERT` direto no banco, sem passar pela API, é recusado pela constraint.
 
 ### 2. Regra de negócio isolada e testada primeiro
 
