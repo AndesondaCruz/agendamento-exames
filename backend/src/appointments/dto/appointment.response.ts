@@ -4,7 +4,10 @@ import { maskCpf } from '../../common/validation/brazilian-documents.js';
 import type { Doctor } from '../../doctors/entities/doctor.entity.js';
 import { ExamResponse } from '../../exams/dto/exam.response.js';
 import type { Exam } from '../../exams/entities/exam.entity.js';
-import type { Appointment } from '../entities/appointment.entity.js';
+import {
+  AppointmentStatus,
+  type Appointment,
+} from '../entities/appointment.entity.js';
 
 class AppointmentDoctor {
   @ApiProperty({ example: 1 })
@@ -20,6 +23,19 @@ class AppointmentDoctor {
 export class AppointmentResponse {
   @ApiProperty({ format: 'uuid' })
   id: string;
+
+  @ApiProperty({
+    example: 'A1B2C3D4',
+    description:
+      'Os 8 primeiros caracteres do id: o paciente usa com o CPF para consultar ou cancelar.',
+  })
+  protocol: string;
+
+  @ApiProperty({ enum: Object.values(AppointmentStatus) })
+  status: AppointmentStatus;
+
+  @ApiProperty({ nullable: true, type: String })
+  cancelledAt: string | null;
 
   @ApiProperty({ example: 'Maria da Silva' })
   patientName: string;
@@ -59,6 +75,9 @@ export class AppointmentResponse {
   ): AppointmentResponse {
     return {
       id: appointment.id,
+      protocol: appointment.id.slice(0, 8).toUpperCase(),
+      status: appointment.status,
+      cancelledAt: appointment.cancelledAt?.toISOString() ?? null,
       patientName: appointment.patientName,
       patientCpfMasked: appointment.patientCpf
         ? maskCpf(appointment.patientCpf)

@@ -138,6 +138,9 @@ describe('BookingPage (integração)', () => {
     api.postResponses.push(() =>
       json(201, {
         id: 'a1b2c3d4-0000-4000-8000-000000000000',
+        protocol: 'A1B2C3D4',
+        status: 'SCHEDULED',
+        cancelledAt: null,
         patientName: 'Maria da Silva',
         patientCpfMasked: '***.982.247-**',
         startsAt: '2030-01-07T08:00:00.000-03:00',

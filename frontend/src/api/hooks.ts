@@ -8,9 +8,11 @@ import { apiRequest } from './client';
 import type {
   Appointment,
   Availability,
+  CancelAppointmentInput,
   CreateAppointmentInput,
   Doctor,
   Exam,
+  LookupAppointmentInput,
 } from './types';
 
 /**
@@ -74,6 +76,37 @@ export function useCreateAppointment() {
       apiRequest<Appointment>('/appointments', { method: 'POST', body: input }),
     // Sucesso OU conflito: a agenda mudou, então recarrega a disponibilidade.
     onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.availabilityRoot }),
+  });
+}
+
+/**
+ * Consulta por protocolo + CPF. É uma mutation, e não uma query, de
+ * propósito: o CPF não vira chave de cache do TanStack Query (que fica em
+ * memória e aparece no DevTools), e a consulta só roda quando o paciente
+ * envia o formulário.
+ */
+export function useLookupAppointment() {
+  return useMutation({
+    mutationFn: (input: LookupAppointmentInput) =>
+      apiRequest<Appointment>('/appointments/lookup', {
+        method: 'POST',
+        body: input,
+      }),
+  });
+}
+
+export function useCancelAppointment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, patientCpf }: CancelAppointmentInput) =>
+      apiRequest<Appointment>(`/appointments/${id}/cancel`, {
+        method: 'POST',
+        body: { patientCpf },
+      }),
+    // O horário foi liberado: a agenda que outra aba mostra ficou velha.
+    onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.availabilityRoot }),
   });
 }

@@ -19,11 +19,21 @@ import { Exam } from '../../exams/entities/exam.entity.js';
  */
 export const APPOINTMENT_NO_OVERLAP_CONSTRAINT = 'appointments_no_overlap';
 
+/** Cancelar não apaga: o agendamento muda de status e o histórico fica. */
+export const AppointmentStatus = {
+  SCHEDULED: 'SCHEDULED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type AppointmentStatus =
+  (typeof AppointmentStatus)[keyof typeof AppointmentStatus];
+
 @Entity('appointments')
 /**
  * Garantia de "sem sobreposição" no nível do banco:
  * para o MESMO médico (doctor_id WITH =), nenhum par de intervalos
- * [starts_at, ends_at) pode se cruzar (&&).
+ * [starts_at, ends_at) pode se cruzar (&&), entre os agendamentos ATIVOS.
+ * Um cancelado não ocupa mais o horário, então fica fora da regra (WHERE).
  *
  * '[)' = intervalo semiaberto: 09:20–10:00 e 10:00–10:40 NÃO colidem.
  * Isso protege inclusive contra requisições simultâneas, porque a checagem
@@ -31,9 +41,10 @@ export const APPOINTMENT_NO_OVERLAP_CONSTRAINT = 'appointments_no_overlap';
  */
 @Exclusion(
   APPOINTMENT_NO_OVERLAP_CONSTRAINT,
-  `USING gist ("doctor_id" WITH =, tstzrange("starts_at", "ends_at", '[)') WITH &&)`,
+  `USING gist ("doctor_id" WITH =, tstzrange("starts_at", "ends_at", '[)') WITH &&) WHERE ("status" = 'SCHEDULED')`,
 )
 @Check('appointments_valid_interval', '"starts_at" < "ends_at"')
+@Check('appointments_status_valid', `"status" IN ('SCHEDULED', 'CANCELLED')`)
 @Check('appointments_patient_cpf_digits', `"patient_cpf" ~ '^[0-9]{11}$'`)
 @Check(
   'appointments_patient_phone_digits',
@@ -105,4 +116,14 @@ export class Appointment {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: AppointmentStatus.SCHEDULED,
+  })
+  status: AppointmentStatus;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
 }

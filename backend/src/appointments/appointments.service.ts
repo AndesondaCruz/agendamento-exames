@@ -23,6 +23,7 @@ import type { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import {
   Appointment,
   APPOINTMENT_NO_OVERLAP_CONSTRAINT,
+  AppointmentStatus,
 } from './entities/appointment.entity.js';
 
 /** Conflito detectado pela regra do código (camada 1), dentro da transação. */
@@ -153,6 +154,8 @@ export class AppointmentsService {
             patientBirthDate: dto.patientBirthDate,
             patientPhone: dto.patientPhone,
             patientEmail: dto.patientEmail ?? null,
+            status: AppointmentStatus.SCHEDULED,
+            cancelledAt: null,
             examId: exam.id,
             doctorId: doctor.id,
             startsAt,
@@ -192,6 +195,86 @@ export class AppointmentsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Consulta pelo protocolo (8 primeiros caracteres do id) + CPF.
+   * A mensagem de "não encontrado" é a mesma se errar o protocolo ou o CPF:
+   * ela não confirma para um curioso que aquele protocolo existe.
+   */
+  async lookup(protocol: string, cpf: string): Promise<AppointmentResponse> {
+    const appointment = await this.appointmentsRepository
+      .createQueryBuilder('appointment')
+      .leftJoinAndSelect('appointment.exam', 'exam')
+      .leftJoinAndSelect('appointment.doctor', 'doctor')
+      // O protocolo foi validado no DTO (8 caracteres hexadecimais), e mesmo
+      // assim vai como parâmetro, nunca concatenado no SQL.
+      .where('appointment.id::text LIKE :prefix', { prefix: `${protocol}%` })
+      .andWhere('appointment.patientCpf = :cpf', { cpf })
+      .orderBy('appointment.createdAt', 'DESC')
+      .getOne();
+
+    if (!appointment) throw this.lookupNotFound();
+
+    return AppointmentResponse.from(
+      appointment,
+      appointment.exam,
+      appointment.doctor,
+      this.timezone,
+    );
+  }
+
+  /**
+   * Cancela sem apagar: o status vira CANCELLED e o horário volta a ficar
+   * livre (a constraint e a disponibilidade só consideram os agendados).
+   * Cancelar de novo devolve o mesmo resultado (idempotente): se a resposta
+   * do primeiro pedido se perder, o paciente pode repetir sem erro.
+   */
+  async cancel(id: string, cpf: string): Promise<AppointmentResponse> {
+    const appointment = await this.appointmentsRepository.findOne({
+      where: { id },
+      relations: { exam: true, doctor: true },
+    });
+
+    // CPF errado = "não encontrado", pelo mesmo motivo da consulta.
+    if (!appointment || appointment.patientCpf !== cpf) {
+      throw this.lookupNotFound();
+    }
+
+    if (appointment.status === AppointmentStatus.SCHEDULED) {
+      if (appointment.startsAt.getTime() <= this.clock.now().getTime()) {
+        throw AppException.businessRule(
+          ErrorCode.CANCELLATION_NOT_ALLOWED,
+          'Não é possível cancelar um exame que já começou ou já passou.',
+        );
+      }
+
+      appointment.status = AppointmentStatus.CANCELLED;
+      appointment.cancelledAt = this.clock.now();
+      await this.appointmentsRepository.save(appointment);
+
+      this.logger.log(`Agendamento ${appointment.id} cancelado.`);
+
+      // O horário foi liberado: a disponibilidade daquele dia mudou.
+      await this.availabilityService.invalidate(
+        appointment.doctorId,
+        clinicDateOf(appointment.startsAt, this.timezone),
+      );
+    }
+
+    return AppointmentResponse.from(
+      appointment,
+      appointment.exam,
+      appointment.doctor,
+      this.timezone,
+    );
+  }
+
+  private lookupNotFound(): AppException {
+    return AppException.notFound(
+      ErrorCode.NOT_FOUND,
+      'Nenhum agendamento encontrado com esse protocolo e CPF. Confira os dados.',
+    );
   }
 
   async findById(id: string): Promise<AppointmentResponse> {

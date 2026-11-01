@@ -16,6 +16,8 @@ const MESSAGES_BY_CODE: Record<string, string> = {
     'O exame selecionado não foi encontrado. Busque o exame novamente.',
   DOCTOR_NOT_FOUND:
     'O médico selecionado não foi encontrado. Escolha outro médico.',
+  CANCELLATION_NOT_ALLOWED:
+    'Este exame já começou ou já passou, então não pode mais ser cancelado.',
   TOO_MANY_REQUESTS:
     'Muitas tentativas em pouco tempo. Aguarde alguns segundos e tente de novo.',
 };

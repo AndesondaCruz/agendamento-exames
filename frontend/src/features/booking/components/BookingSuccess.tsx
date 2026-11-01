@@ -1,10 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Appointment } from '../../../api/types';
-import {
-  clinicDateOf,
-  formatClinicTime,
-  formatLongDate,
-} from '../../../lib/dates';
+import { AppointmentDetails } from '../../../components/AppointmentDetails';
 
 interface BookingSuccessProps {
   appointment: Appointment;
@@ -21,8 +17,6 @@ export function BookingSuccess({
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
-
-  const protocol = appointment.id.slice(0, 8).toUpperCase();
 
   return (
     <section className="mx-auto max-w-xl rounded-2xl border border-brand-200 bg-white p-6 text-center shadow-sm sm:p-10">
@@ -42,40 +36,25 @@ export function BookingSuccess({
       <p className="mt-1 text-sm text-slate-500">
         Protocolo{' '}
         <span className="font-mono font-semibold text-slate-700">
-          {protocol}
+          {appointment.protocol}
         </span>
       </p>
 
-      <dl className="mt-6 space-y-2 rounded-xl bg-slate-50 p-4 text-left text-sm">
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Paciente</dt>
-          <dd className="font-medium">{appointment.patientName}</dd>
-        </div>
-        {appointment.patientCpfMasked && (
-          <div className="flex justify-between gap-4">
-            <dt className="text-slate-500">CPF</dt>
-            <dd className="font-mono font-medium">
-              {appointment.patientCpfMasked}
-            </dd>
-          </div>
-        )}
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Exame</dt>
-          <dd className="text-right font-medium">{appointment.exam.name}</dd>
-        </div>
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Médico</dt>
-          <dd className="font-medium">{appointment.doctor.name}</dd>
-        </div>
-        <div className="flex justify-between gap-4">
-          <dt className="text-slate-500">Quando</dt>
-          <dd className="text-right font-medium">
-            {formatLongDate(clinicDateOf(appointment.startsAt))}, das{' '}
-            {formatClinicTime(appointment.startsAt)} às{' '}
-            {formatClinicTime(appointment.endsAt)}
-          </dd>
-        </div>
-      </dl>
+      <div className="mt-6">
+        <AppointmentDetails appointment={appointment} />
+      </div>
+
+      <p className="mt-4 text-sm text-slate-600">
+        Guarde o protocolo. Com ele e o seu CPF, você consulta ou cancela o
+        exame em{' '}
+        <a
+          href="#meu-agendamento"
+          className="font-medium text-brand-700 underline underline-offset-2"
+        >
+          Meu agendamento
+        </a>
+        .
+      </p>
 
       <button
         type="button"

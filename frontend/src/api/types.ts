@@ -44,8 +44,14 @@ export interface Availability {
   unavailableReason: UnavailableReason | null;
 }
 
+export type AppointmentStatus = 'SCHEDULED' | 'CANCELLED';
+
 export interface Appointment {
   id: string;
+  /** 8 primeiros caracteres do id, em maiúsculas: o paciente usa com o CPF. */
+  protocol: string;
+  status: AppointmentStatus;
+  cancelledAt: string | null;
   patientName: string;
   /** "***.982.247-**": a API nunca devolve o CPF completo. */
   patientCpfMasked: string | null;
@@ -68,6 +74,19 @@ export interface CreateAppointmentInput {
   examId: number;
   doctorId: number;
   startsAt: string;
+}
+
+export interface LookupAppointmentInput {
+  /** 8 caracteres hexadecimais (a API aceita maiúsculas ou minúsculas). */
+  protocol: string;
+  /** Só dígitos. */
+  patientCpf: string;
+}
+
+export interface CancelAppointmentInput {
+  id: string;
+  /** Só dígitos. */
+  patientCpf: string;
 }
 
 /** Formato único de erro da API. */

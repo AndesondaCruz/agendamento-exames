@@ -25,7 +25,10 @@ import {
   AvailabilityResponse,
   UnavailableReason,
 } from './dto/availability.response.js';
-import { Appointment } from './entities/appointment.entity.js';
+import {
+  Appointment,
+  AppointmentStatus,
+} from './entities/appointment.entity.js';
 
 @Injectable()
 export class AvailabilityService {
@@ -181,6 +184,8 @@ export class AvailabilityService {
       select: { startsAt: true, endsAt: true },
       where: {
         doctorId,
+        // Cancelado não ocupa horário: o mesmo critério da constraint (WHERE).
+        status: AppointmentStatus.SCHEDULED,
         startsAt: LessThan(day.end),
         endsAt: MoreThan(day.start),
       },

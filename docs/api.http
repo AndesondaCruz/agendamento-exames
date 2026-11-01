@@ -131,3 +131,20 @@ GET {{baseUrl}}/doctors/1/availability?examId=999&date={{date}}
 
 ### Consultar um agendamento (troque pelo id devolvido no POST)
 GET {{baseUrl}}/appointments/00000000-0000-4000-8000-000000000000
+
+### Consultar pelo protocolo + CPF (protocolo = 8 primeiros caracteres do id)
+POST {{baseUrl}}/appointments/lookup
+Content-Type: application/json
+
+{
+  "protocol": "A1B2C3D4",
+  "patientCpf": "529.982.247-25"
+}
+
+### Cancelar (troque pelo id devolvido no POST). Repetir devolve o mesmo resultado.
+POST {{baseUrl}}/appointments/00000000-0000-4000-8000-000000000000/cancel
+Content-Type: application/json
+
+{
+  "patientCpf": "529.982.247-25"
+}
