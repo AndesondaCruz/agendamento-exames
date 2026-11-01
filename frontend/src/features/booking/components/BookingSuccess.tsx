@@ -51,6 +51,14 @@ export function BookingSuccess({
           <dt className="text-slate-500">Paciente</dt>
           <dd className="font-medium">{appointment.patientName}</dd>
         </div>
+        {appointment.patientCpfMasked && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-slate-500">CPF</dt>
+            <dd className="font-mono font-medium">
+              {appointment.patientCpfMasked}
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between gap-4">
           <dt className="text-slate-500">Exame</dt>
           <dd className="text-right font-medium">{appointment.exam.name}</dd>

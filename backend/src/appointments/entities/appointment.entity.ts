@@ -34,6 +34,11 @@ export const APPOINTMENT_NO_OVERLAP_CONSTRAINT = 'appointments_no_overlap';
   `USING gist ("doctor_id" WITH =, tstzrange("starts_at", "ends_at", '[)') WITH &&)`,
 )
 @Check('appointments_valid_interval', '"starts_at" < "ends_at"')
+@Check('appointments_patient_cpf_digits', `"patient_cpf" ~ '^[0-9]{11}$'`)
+@Check(
+  'appointments_patient_phone_digits',
+  `"patient_phone" ~ '^[0-9]{10,11}$'`,
+)
 @Index(['doctorId', 'startsAt'])
 export class Appointment {
   @PrimaryGeneratedColumn('uuid')
@@ -41,6 +46,37 @@ export class Appointment {
 
   @Column({ name: 'patient_name', type: 'varchar', length: 120 })
   patientName: string;
+
+  /*
+   * Dados de identificação, adicionados numa versão posterior. São
+   * obrigatórios na API para todo agendamento novo, mas aceitam NULL no
+   * banco: agendamentos feitos antes desta versão não têm esses dados, e
+   * a migration não pode inventá-los.
+   */
+
+  /** Só os 11 dígitos, sem pontuação. */
+  @Column({ name: 'patient_cpf', type: 'char', length: 11, nullable: true })
+  patientCpf: string | null;
+
+  @Column({ name: 'patient_birth_date', type: 'date', nullable: true })
+  patientBirthDate: string | null;
+
+  /** Só os dígitos, com DDD (10 ou 11). */
+  @Column({
+    name: 'patient_phone',
+    type: 'varchar',
+    length: 11,
+    nullable: true,
+  })
+  patientPhone: string | null;
+
+  @Column({
+    name: 'patient_email',
+    type: 'varchar',
+    length: 254,
+    nullable: true,
+  })
+  patientEmail: string | null;
 
   @Column({ name: 'doctor_id', type: 'int' })
   doctorId: number;

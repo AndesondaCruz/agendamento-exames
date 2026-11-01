@@ -47,6 +47,8 @@ export interface Availability {
 export interface Appointment {
   id: string;
   patientName: string;
+  /** "***.982.247-**": a API nunca devolve o CPF completo. */
+  patientCpfMasked: string | null;
   startsAt: string;
   endsAt: string;
   exam: Exam;
@@ -56,6 +58,13 @@ export interface Appointment {
 
 export interface CreateAppointmentInput {
   patientName: string;
+  /** Só dígitos. */
+  patientCpf: string;
+  /** "YYYY-MM-DD". */
+  patientBirthDate: string;
+  /** Só dígitos, com DDD. */
+  patientPhone: string;
+  patientEmail?: string;
   examId: number;
   doctorId: number;
   startsAt: string;

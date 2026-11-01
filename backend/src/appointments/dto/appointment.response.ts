@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { toClinicIso } from '../../common/time/clinic-calendar.js';
+import { maskCpf } from '../../common/validation/brazilian-documents.js';
 import type { Doctor } from '../../doctors/entities/doctor.entity.js';
 import { ExamResponse } from '../../exams/dto/exam.response.js';
 import type { Exam } from '../../exams/entities/exam.entity.js';
@@ -22,6 +23,15 @@ export class AppointmentResponse {
 
   @ApiProperty({ example: 'Maria da Silva' })
   patientName: string;
+
+  @ApiProperty({
+    example: '***.982.247-**',
+    nullable: true,
+    type: String,
+    description:
+      'CPF mascarado: a API nunca devolve o documento completo, só o suficiente para o paciente conferir. Nulo em agendamentos anteriores à identificação.',
+  })
+  patientCpfMasked: string | null;
 
   @ApiProperty({ example: '2030-01-07T08:00:00.000-03:00' })
   startsAt: string;
@@ -50,6 +60,9 @@ export class AppointmentResponse {
     return {
       id: appointment.id,
       patientName: appointment.patientName,
+      patientCpfMasked: appointment.patientCpf
+        ? maskCpf(appointment.patientCpf)
+        : null,
       startsAt: toClinicIso(appointment.startsAt, timezone),
       endsAt: toClinicIso(appointment.endsAt, timezone),
       exam: ExamResponse.from(exam),

@@ -86,6 +86,17 @@ export const CRM = {
   CAMILA: 'CRM-MG 55555',
 } as const;
 
+/**
+ * Identificação válida para os testes. O CPF 529.982.247-25 é um número de
+ * exemplo muito usado em documentação: passa no cálculo dos dígitos
+ * verificadores, sem ser de uma pessoa real conhecida.
+ */
+export const PATIENT = {
+  patientCpf: '529.982.247-25',
+  patientBirthDate: '1990-05-20',
+  patientPhone: '(85) 98765-4321',
+} as const;
+
 /** Ids do catálogo oficial (exames.csv). */
 export const EXAM = {
   RAIO_X_TORAX_20: 1,

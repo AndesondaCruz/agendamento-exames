@@ -12,7 +12,12 @@ import {
 } from './bookingReducer';
 import { BookingSuccess } from './components/BookingSuccess';
 import { BookingSummary } from './components/BookingSummary';
-import { firstWorkingDate } from './bookingRules';
+import {
+  emptyPatient,
+  firstWorkingDate,
+  toPatientPayload,
+  type PatientData,
+} from './bookingRules';
 import { DatePicker } from './components/DatePicker';
 import { DoctorList } from './components/DoctorList';
 import { ExamSearch } from './components/ExamSearch';
@@ -27,7 +32,7 @@ import { SlotPicker } from './components/SlotPicker';
 export function BookingPage() {
   const [state, dispatch] = useReducer(bookingReducer, initialBookingState);
   const [confirmed, setConfirmed] = useState<Appointment | null>(null);
-  const [patientName, setPatientName] = useState('');
+  const [patient, setPatient] = useState<PatientData>(emptyPatient);
   /** Aviso exibido no passo do horário quando o horário escolhido deixou de valer. */
   const [slotNotice, setSlotNotice] = useState<string | null>(null);
   const createAppointment = useCreateAppointment();
@@ -52,11 +57,11 @@ export function BookingPage() {
     dispatch({ type: 'clearSlot' });
   }, []);
 
-  const handleSubmit = (patientName: string) => {
+  const handleSubmit = (submitted: PatientData) => {
     if (!exam || !doctor || !slot) return;
     createAppointment.mutate(
       {
-        patientName,
+        ...toPatientPayload(submitted),
         examId: exam.id,
         doctorId: doctor.id,
         startsAt: slot.startsAt,
@@ -78,7 +83,7 @@ export function BookingPage() {
   const startOver = () => {
     dispatch({ type: 'reset' });
     createAppointment.reset();
-    setPatientName('');
+    setPatient(emptyPatient);
     setSlotNotice(null);
     setConfirmed(null);
   };
@@ -177,8 +182,9 @@ export function BookingPage() {
           lockedHint="Escolha um horário para confirmar."
         >
           <PatientForm
-            name={patientName}
-            onNameChange={setPatientName}
+            patient={patient}
+            onPatientChange={setPatient}
+            today={today}
             isSubmitting={createAppointment.isPending}
             submitError={
               isSlotError(createAppointment.error)

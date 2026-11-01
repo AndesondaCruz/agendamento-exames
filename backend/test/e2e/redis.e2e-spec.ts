@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { RedisCacheStore } from '../../src/common/cache/redis-cache-store.js';
 import {
-  CRM,
   createTestApp,
+  CRM,
   EXAM,
+  PATIENT,
   TOMORROW,
   type TestApp,
 } from './test-app.js';
@@ -67,6 +68,7 @@ describe('Cache no Redis (e2e)', () => {
       .http()
       .post('/api/appointments')
       .send({
+        ...PATIENT,
         patientName: 'João Pereira',
         examId: EXAM.ULTRASSOM_ABDOMINAL_40,
         doctorId: helena,
@@ -128,6 +130,7 @@ describe('Redis fora do ar (e2e)', () => {
       .http()
       .post('/api/appointments')
       .send({
+        ...PATIENT,
         patientName: 'Ana Souza',
         examId: EXAM.ULTRASSOM_ABDOMINAL_40,
         doctorId: helena,

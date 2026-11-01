@@ -141,7 +141,7 @@ curl "http://localhost:3000/api/doctors/1/availability?examId=7&date=2026-11-16"
 # Agendar
 curl -X POST http://localhost:3000/api/appointments \
   -H "Content-Type: application/json" \
-  -d '{"patientName":"Maria da Silva","examId":7,"doctorId":1,"startsAt":"2026-11-16T08:00:00-03:00"}'
+  -d '{"patientName":"Maria da Silva","patientCpf":"529.982.247-25","patientBirthDate":"1990-05-20","patientPhone":"(85) 98765-4321","examId":7,"doctorId":1,"startsAt":"2026-11-16T08:00:00-03:00"}'
 ```
 
 Resposta da disponibilidade (resumida):

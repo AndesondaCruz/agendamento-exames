@@ -149,6 +149,10 @@ export class AppointmentsService {
         return manager.save(
           manager.create(Appointment, {
             patientName: dto.patientName,
+            patientCpf: dto.patientCpf,
+            patientBirthDate: dto.patientBirthDate,
+            patientPhone: dto.patientPhone,
+            patientEmail: dto.patientEmail ?? null,
             examId: exam.id,
             doctorId: doctor.id,
             startsAt,

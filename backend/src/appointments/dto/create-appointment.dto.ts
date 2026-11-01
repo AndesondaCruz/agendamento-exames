@@ -1,14 +1,22 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsEmail,
   IsInt,
   IsISO8601,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import {
+  IsBirthDate,
+  IsBrazilianPhone,
+  IsCpf,
+  toDigits,
+} from '../../common/validation/validators.js';
 
 /** Exige fuso explícito ("Z" ou "-03:00"): "2030-01-07T08:00" sozinho é ambíguo. */
 const ISO_WITH_OFFSET =
@@ -30,6 +38,38 @@ export class CreateAppointmentDto {
       'patientName deve conter apenas letras, espaços, apóstrofo, ponto ou hífen.',
   })
   patientName: string;
+
+  @ApiProperty({
+    example: '529.982.247-25',
+    description:
+      'CPF, com ou sem pontuação. Os dígitos verificadores são conferidos.',
+  })
+  @Transform(toDigits)
+  @IsCpf()
+  patientCpf: string;
+
+  @ApiProperty({ example: '1990-05-20', description: 'YYYY-MM-DD' })
+  @IsBirthDate()
+  patientBirthDate: string;
+
+  @ApiProperty({
+    example: '(85) 98765-4321',
+    description: 'Telefone com DDD, com ou sem pontuação.',
+  })
+  @Transform(toDigits)
+  @IsBrazilianPhone()
+  patientPhone: string;
+
+  @ApiPropertyOptional({ example: 'maria.silva@email.com' })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() || undefined : value,
+  )
+  @IsEmail({}, { message: 'patientEmail deve ser um e-mail válido.' })
+  @MaxLength(254, {
+    message: 'patientEmail deve ter no máximo 254 caracteres.',
+  })
+  patientEmail?: string;
 
   @ApiProperty({ example: 7 })
   @IsInt({ message: 'examId deve ser um número inteiro.' })

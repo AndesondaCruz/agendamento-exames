@@ -112,7 +112,7 @@ function renderPage() {
   );
 }
 
-/** Exame -> médico -> (data pré-selecionada) -> horário 08:00 -> nome. */
+/** Exame -> médico -> (data pré-selecionada) -> horário 08:00 -> dados do paciente. */
 async function fillUntilName(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/buscar exame/i), 'ressonancia');
   await user.click(
@@ -125,6 +125,9 @@ async function fillUntilName(user: ReturnType<typeof userEvent.setup>) {
   );
   await user.click(await screen.findByRole('radio', { name: /^08:00/ }));
   await user.type(screen.getByLabelText(/nome completo/i), 'Maria da Silva');
+  await user.type(screen.getByLabelText(/^cpf/i), '52998224725');
+  await user.type(screen.getByLabelText(/nascimento/i), '1990-05-20');
+  await user.type(screen.getByLabelText(/telefone/i), '85987654321');
 }
 
 describe('BookingPage (integração)', () => {
@@ -136,6 +139,7 @@ describe('BookingPage (integração)', () => {
       json(201, {
         id: 'a1b2c3d4-0000-4000-8000-000000000000',
         patientName: 'Maria da Silva',
+        patientCpfMasked: '***.982.247-**',
         startsAt: '2030-01-07T08:00:00.000-03:00',
         endsAt: '2030-01-07T08:40:00.000-03:00',
         exam: EXAMS[0],
@@ -155,10 +159,15 @@ describe('BookingPage (integração)', () => {
       await screen.findByRole('heading', { name: /agendamento confirmado/i }),
     ).toBeInTheDocument();
     expect(screen.getByText('A1B2C3D4')).toBeInTheDocument();
+    expect(screen.getByText('***.982.247-**')).toBeInTheDocument();
 
+    // As máscaras são só visuais: a API recebe apenas os dígitos.
     const post = api.calls.find((call) => call.method === 'POST');
     expect(post?.body).toEqual({
       patientName: 'Maria da Silva',
+      patientCpf: '52998224725',
+      patientBirthDate: '1990-05-20',
+      patientPhone: '85987654321',
       examId: 20,
       doctorId: 1,
       startsAt: expect.stringMatching(/T08:00:00\.000-03:00$/),
@@ -203,11 +212,34 @@ describe('BookingPage (integração)', () => {
       ).not.toBeInTheDocument(),
     );
 
-    // Escolhe outro horário: o nome digitado continua lá.
+    // Escolhe outro horário: os dados digitados continuam lá.
     await user.click(screen.getByRole('radio', { name: /^08:40/ }));
     expect(screen.getByLabelText(/nome completo/i)).toHaveValue(
       'Maria da Silva',
     );
+    expect(screen.getByLabelText(/^cpf/i)).toHaveValue('529.982.247-25');
+  });
+
+  it('aplica as máscaras e não envia com CPF inválido', async () => {
+    const api = installFakeApi();
+    const user = userEvent.setup();
+    renderPage();
+
+    await fillUntilName(user);
+    expect(screen.getByLabelText(/telefone/i)).toHaveValue('(85) 98765-4321');
+
+    const cpf = screen.getByLabelText(/^cpf/i);
+    await user.clear(cpf);
+    await user.type(cpf, '52998224724'); // último dígito errado
+    await user.click(
+      screen.getByRole('button', { name: /confirmar agendamento/i }),
+    );
+
+    expect(await screen.findByText(/cpf inválido/i)).toBeInTheDocument();
+    // O foco vai para o campo com erro, para o paciente corrigir na hora.
+    expect(cpf).toHaveFocus();
+    expect(cpf).toHaveAttribute('aria-invalid', 'true');
+    expect(api.calls.some((call) => call.method === 'POST')).toBe(false);
   });
 
   it('busca sem resultados mostra estado vazio com dica', async () => {

@@ -34,6 +34,9 @@ Content-Type: application/json
 
 {
   "patientName": "Maria da Silva",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "{{date}}T08:00:00-03:00"
@@ -45,6 +48,9 @@ Content-Type: application/json
 
 {
   "patientName": "João Souza",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "{{date}}T08:00:00-03:00"
@@ -56,6 +62,9 @@ Content-Type: application/json
 
 {
   "patientName": "João Souza",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 1,
   "doctorId": 1,
   "startsAt": "{{date}}T08:20:00-03:00"
@@ -67,6 +76,9 @@ Content-Type: application/json
 
 {
   "patientName": "João Souza",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "{{date}}T08:10:00-03:00"
@@ -78,6 +90,9 @@ Content-Type: application/json
 
 {
   "patientName": "João Souza",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "{{date}}T12:40:00-03:00"
@@ -89,6 +104,9 @@ Content-Type: application/json
 
 {
   "patientName": "João Souza",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "2020-01-06T08:00:00-03:00"
@@ -100,6 +118,9 @@ Content-Type: application/json
 
 {
   "patientName": "Jo",
+  "patientCpf": "529.982.247-25",
+  "patientBirthDate": "1990-05-20",
+  "patientPhone": "(85) 98765-4321",
   "examId": 7,
   "doctorId": 1,
   "startsAt": "{{date}}T08:40:00"

@@ -1,7 +1,8 @@
 import {
-  CRM,
   createTestApp,
+  CRM,
   EXAM,
+  PATIENT,
   TOMORROW,
   type TestApp,
 } from './test-app.js';
@@ -32,6 +33,7 @@ describe('Concorrência (e2e)', () => {
       .http()
       .post('/api/appointments')
       .send({
+        ...PATIENT,
         patientName: patient,
         examId,
         doctorId: helena,
