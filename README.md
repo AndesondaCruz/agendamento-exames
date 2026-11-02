@@ -94,7 +94,7 @@ npm test
 | --- | --- | --- | --- |
 | `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, CPF e telefone, parser do CSV, cache | 83 testes |
 | `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 82 testes |
-| `frontend` | `npm test` | Reducer, regras e fluxos completos de agendar, consultar e cancelar (Testing Library) | 55 testes |
+| `frontend` | `npm test` | Reducer, regras, fluxos completos de agendar, consultar e cancelar (Testing Library) e acessibilidade de cada tela (axe-core) | 67 testes |
 
 Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`.
 
@@ -357,7 +357,9 @@ Com 30 exames e 5 médicos o Postgres já responde em milissegundos. O cache est
 - Cada etapa trata **loading, erro e vazio**; a disponibilidade se atualiza sozinha a cada 60 s.
 - **Conflito (409)**: o paciente volta para a escolha de horário com um aviso, a lista é recarregada e os dados do paciente são preservados.
 - Dias em que o médico não atende já aparecem desabilitados.
-- **Acessibilidade**: inputs nativos (navegação por teclado e leitor de tela), foco gerenciado, contraste verificado. Auditoria com axe-core: 0 violações WCAG 2.1 AA.
+- **Acessibilidade**: inputs nativos (navegação por teclado e leitor de tela) e foco gerenciado. A conformidade com WCAG 2.1 AA foi verificada com axe-core de duas formas, que **não são a mesma coisa**:
+  - **Auditoria manual** com axe-core em navegador real (Chromium, via Playwright), durante o desenvolvimento, em todas as telas (agendamento, erro de validação, confirmação, consulta, confirmação de cancelamento e cancelado), incluindo contraste: 0 violações. Esse roteiro não está no repositório, então não dá para reproduzi-lo a partir daqui.
+  - **Testes automatizados** com axe-core (jsdom), em `frontend/src/test/accessibility.test.tsx`: rodam a cada `npm test` e garantem a estrutura acessível em cada tela e estado. **Contraste não é coberto por esses testes**, porque o jsdom não calcula CSS.
 - Busca com debounce de 300 ms; build de produção com cerca de 89 KB (gzip).
 
 | Escolha da data | Horário ocupado por outra pessoa (409) | Celular |
