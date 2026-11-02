@@ -13,10 +13,20 @@ Aplicação full stack para agendar exames de imagem: o paciente **busca o exame
 
 ![Fluxo completo de agendamento](docs/screenshots/fluxo-completo.png)
 
+## Aplicação no ar
+
+- **Front**: https://agendamento-exames-eight.vercel.app
+- **API (Swagger)**: https://agendamento-exames-yw6j.onrender.com/api/docs
+
+> **Aviso:** a API roda no plano gratuito do Render e "dorme" após 15 min sem uso. O primeiro acesso depois disso pode levar cerca de 50 segundos; os seguintes são rápidos.
+
+Como o deploy foi montado: [Deploy](#deploy).
+
 ---
 
 ## Sumário
 
+- [Aplicação no ar](#aplicação-no-ar)
 - [Como rodar](#como-rodar)
 - [Como testar](#como-testar)
 - [API](#api)
@@ -72,6 +82,31 @@ npm run dev
 ```
 
 Em desenvolvimento o Vite repassa `/api` para `localhost:3000`, então o front não precisa de configuração.
+
+### Deploy
+
+A aplicação publicada usa três serviços gerenciados, cada um com uma responsabilidade:
+
+| Peça | Serviço | Configuração |
+| --- | --- | --- |
+| Front | Vercel | Root Directory `frontend`; variável `VITE_API_URL` apontando para a URL da API |
+| API | Render, via Docker | Root Directory `backend`. O container aplica as migrations e carrega o catálogo (seed) sozinho ao iniciar |
+| Banco | Neon | PostgreSQL gerenciado, acessado com SSL |
+
+**Variáveis de ambiente da API em produção** (os valores secretos ficam só no painel do Render, nunca no repositório):
+
+| Variável | Valor / origem |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | connection string fornecida pelo Neon; secreta, nunca versionada |
+| `DATABASE_SSL` | `true` |
+| `CORS_ORIGIN` | URL exata do front, **sem barra final** (`https://...vercel.app`, e não `https://...vercel.app/`) |
+| `CLINIC_TIMEZONE` | fuso da clínica (`America/Sao_Paulo`) |
+| `RUN_SEED` | `true` para carregar o catálogo ao iniciar (é idempotente) |
+| `TRUST_PROXY_HOPS` | `1`; confira na documentação da plataforma, pois um valor errado afeta o rate limiting (veja a [decisão 10](#10-rate-limiting)) |
+| `RATE_LIMIT_WINDOW_SECONDS`, `RATE_LIMIT_LOOKUP`, `RATE_LIMIT_CANCEL`, `RATE_LIMIT_CREATE` | limites do rate limiting; os padrões estão em [`backend/.env.example`](backend/.env.example) |
+
+Não há `REDIS_URL` no deploy: **sem ela, o cache fica em memória** da própria instância e a aplicação funciona do mesmo jeito (veja a [decisão 4](#4-cache-de-leitura-com-redis)). A consequência é que o cache zera quando a API "dorme" e volta.
 
 ---
 
@@ -446,7 +481,7 @@ Fora do escopo do desafio, mas o que eu faria num sistema real:
 - **Observabilidade**: logs estruturados (JSON), métricas e tracing.
 - **Teste de carga** (k6) para medir o ganho real do cache e o comportamento sob concorrência alta.
 - **Banco com dois perfis de acesso**: um com privilégios para migrations e outro restrito para a API em execução.
-- **Validação explícita do certificado TLS** do banco em produção.
+- **Validação explícita do certificado TLS** do banco em produção (hoje o `DATABASE_SSL=true` liga o SSL na conexão com o Neon, mas sem checar a cadeia de certificados).
 - Migração para TypeScript 7 e Vitest 5 no back-end (recusadas por enquanto; o CI apontou incompatibilidades).
 
 ---
