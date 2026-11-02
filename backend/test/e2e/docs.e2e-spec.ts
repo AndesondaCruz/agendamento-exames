@@ -47,6 +47,8 @@ describe('Swagger / OpenAPI (e2e)', () => {
         '/api/doctors',
         '/api/doctors/{doctorId}/availability',
         '/api/appointments',
+        '/api/appointments/lookup',
+        '/api/appointments/{id}/cancel',
         '/api/appointments/{id}',
         '/api/health',
       ]),

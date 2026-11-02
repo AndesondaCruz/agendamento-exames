@@ -1,7 +1,8 @@
 import {
-  CRM,
   createTestApp,
+  CRM,
   EXAM,
+  PATIENT,
   SUNDAY,
   TODAY,
   TOMORROW,
@@ -104,6 +105,7 @@ describe('GET /api/doctors/:id/availability (e2e)', () => {
       .http()
       .post('/api/appointments')
       .send({
+        ...PATIENT,
         patientName: 'Paciente Existente',
         examId: EXAM.ULTRASSOM_ABDOMINAL_40,
         doctorId: helena,

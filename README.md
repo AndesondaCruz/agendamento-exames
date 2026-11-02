@@ -92,9 +92,9 @@ npm test
 
 | Pasta | Comando | O que roda | Quantidade |
 | --- | --- | --- | --- |
-| `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, parser do CSV, cache | 59 testes |
-| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 61 testes |
-| `frontend` | `npm test` | Reducer, regras e fluxo completo da página (Testing Library) | 36 testes |
+| `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, CPF e telefone, parser do CSV, cache | 83 testes |
+| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 82 testes |
+| `frontend` | `npm test` | Reducer, regras e fluxos completos de agendar, consultar e cancelar (Testing Library) | 55 testes |
 
 Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`.
 
@@ -104,8 +104,9 @@ Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente
 **O que os testes garantem**, entre outros:
 
 - a grade de horários do enunciado (turnos, durações de 20/30/40 min, horários ocupados, "agora");
-- **20 requisições simultâneas para o mesmo horário: exatamente 1 sucesso e 19 conflitos (409)**;
-- todas as validações e códigos de erro (400, 404, 409, 422);
+- **20 requisições simultâneas para o mesmo horário: exatamente 1 sucesso e 19 conflitos (409)**, inclusive com a constraint do banco removida (a regra também está no código);
+- todas as validações e códigos de erro (400, 404, 409, 422), incluindo CPF com dígito verificador errado;
+- consultar exige protocolo **e** CPF; cancelar libera o horário na hora (outra pessoa consegue agendar), é idempotente e é recusado para exame que já começou;
 - o cache: HIT/MISS, invalidação após agendar e a API funcionando **com o Redis fora do ar**;
 - a documentação Swagger lista os erros que cada endpoint realmente devolve;
 - o fluxo do front de ponta a ponta, incluindo o tratamento de horário ocupado por outra pessoa.
@@ -124,7 +125,9 @@ Base: `http://localhost:3000/api`. Documentação interativa em `/api/docs`. Há
 | `GET` | `/doctors` | Médicos com seus turnos semanais |
 | `GET` | `/doctors/:doctorId/availability?examId=7&date=2026-11-16` | Horários livres do médico para o exame na data |
 | `POST` | `/appointments` | Cria um agendamento |
-| `GET` | `/appointments/:id` | Consulta um agendamento |
+| `POST` | `/appointments/lookup` | Consulta um agendamento pelo protocolo + CPF |
+| `POST` | `/appointments/:id/cancel` | Cancela um agendamento (exige o CPF) e libera o horário |
+| `GET` | `/appointments/:id` | Consulta um agendamento pelo id |
 | `GET` | `/health` | Saúde da API, do banco e do cache |
 
 ### Exemplos com curl
@@ -141,8 +144,20 @@ curl "http://localhost:3000/api/doctors/1/availability?examId=7&date=2026-11-16"
 # Agendar
 curl -X POST http://localhost:3000/api/appointments \
   -H "Content-Type: application/json" \
-  -d '{"patientName":"Maria da Silva","examId":7,"doctorId":1,"startsAt":"2026-11-16T08:00:00-03:00"}'
+  -d '{"patientName":"Maria da Silva","patientCpf":"529.982.247-25","patientBirthDate":"1990-05-20","patientPhone":"(85) 98765-4321","examId":7,"doctorId":1,"startsAt":"2026-11-16T08:00:00-03:00"}'
+
+# Consultar (o protocolo são os 8 primeiros caracteres do id devolvido no POST)
+curl -X POST http://localhost:3000/api/appointments/lookup \
+  -H "Content-Type: application/json" \
+  -d '{"protocol":"A1B2C3D4","patientCpf":"529.982.247-25"}'
+
+# Cancelar (troque pelo id devolvido no POST)
+curl -X POST http://localhost:3000/api/appointments/<id>/cancel \
+  -H "Content-Type: application/json" \
+  -d '{"patientCpf":"529.982.247-25"}'
 ```
+
+A resposta do agendamento traz `protocol`, `status` (`SCHEDULED` ou `CANCELLED`), `cancelledAt` e o CPF **mascarado** (`***.982.247-**`): a API nunca devolve o documento completo.
 
 Resposta da disponibilidade (resumida):
 
@@ -180,11 +195,12 @@ Todo erro segue o mesmo formato, com um `code` estável (o cliente decide pelo `
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | Corpo ou parâmetros inválidos; `details` lista cada campo e o motivo |
 | 400 | `INVALID_DATE` | Data inexistente (ex.: `2026-02-30`) |
-| 404 | `EXAM_NOT_FOUND`, `DOCTOR_NOT_FOUND`, `NOT_FOUND` | Recurso inexistente |
+| 404 | `EXAM_NOT_FOUND`, `DOCTOR_NOT_FOUND`, `NOT_FOUND` | Recurso inexistente; na consulta e no cancelamento, também quando o CPF não confere (a mesma mensagem, para não confirmar que o protocolo existe) |
 | 409 | `SLOT_UNAVAILABLE` | O horário foi ocupado, inclusive por uma requisição simultânea |
 | 422 | `SLOT_IN_PAST` | Início no passado |
 | 422 | `OUTSIDE_WORKING_HOURS` | O médico não atende ou o exame não cabe inteiro no turno |
 | 422 | `SLOT_NOT_ON_GRID` | Horário fora da grade do exame (a mensagem lista os horários válidos) |
+| 422 | `CANCELLATION_NOT_ALLOWED` | Cancelar um exame que já começou ou já passou |
 | 500 | `INTERNAL_ERROR` | Erro inesperado (detalhes só no log, nunca na resposta) |
 
 A separação entre **422** e **409** é intencional: 422 é uma requisição que nunca seria válida; 409 é um conflito de estado, e tentar outro horário resolve.
@@ -252,6 +268,12 @@ erDiagram
     appointments {
         uuid id PK
         varchar patient_name
+        char patient_cpf "só dígitos"
+        date patient_birth_date
+        varchar patient_phone "só dígitos, com DDD"
+        varchar patient_email "opcional"
+        varchar status "SCHEDULED ou CANCELLED"
+        timestamptz cancelled_at
         int doctor_id FK
         int exam_id FK
         timestamptz starts_at
@@ -266,17 +288,27 @@ Turnos são guardados em **minutos do dia** (`08:00` = 480): a geração de hor�
 
 ## Decisões técnicas
 
-### 1. Concorrência garantida pelo banco, não pelo código
+### 1. Concorrência com duas camadas: no código e no banco
 
-A regra "um médico não pode ter dois exames ao mesmo tempo" é uma **exclusion constraint** do PostgreSQL:
+A regra "um médico não pode ter dois exames ao mesmo tempo" é garantida duas vezes, de forma independente:
+
+| Camada | Como funciona | Protege contra |
+| --- | --- | --- |
+| **1. Código** | Dentro de uma transação, a API trava a linha do médico (`SELECT ... FOR UPDATE`) e confere a sobreposição com a mesma função `overlaps` que gera a disponibilidade | Pedidos simultâneos pela API, em qualquer banco relacional com `FOR UPDATE` (Postgres, MySQL...) |
+| **2. Banco** | Uma **exclusion constraint** do PostgreSQL recusa dois intervalos sobrepostos do mesmo médico | O que escapar do código: um bug, um script, outra aplicação gravando no mesmo banco |
 
 ```sql
 EXCLUDE USING gist (doctor_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
+  WHERE (status = 'SCHEDULED')
 ```
 
-"Não podem existir duas linhas com o mesmo médico **e** intervalos que se sobrepõem." Se duas requisições chegam juntas, o próprio Postgres aceita uma e rejeita a outra (erro `23P01`, que a API traduz para **409**).
+O `WHERE` faz a constraint ignorar agendamentos cancelados: cancelar libera o horário sem apagar o registro.
 
-Por que não "consultar antes de inserir": entre o `SELECT` e o `INSERT` outra requisição pode ocupar o horário (*race condition*). Um lock na aplicação não funcionaria com várias instâncias da API. A constraint é atômica, vale para qualquer cliente (inclusive SQL manual) e cobre **sobreposição parcial** entre exames de durações diferentes, não só o mesmo horário de início. O teste de concorrência dispara 20 requisições simultâneas e confirma 1 sucesso e 19 conflitos.
+**Por que travar o médico, e não o horário:** um horário livre não tem linha no banco para travar, e por isso "consultar antes de inserir" sozinho tem *race condition* (duas requisições consultam, as duas veem livre, as duas gravam). Travando a linha do médico, pedidos para o **mesmo** médico são processados um de cada vez, enquanto médicos diferentes continuam em paralelo. O lock é do banco, então vale também com várias instâncias da API.
+
+**Por que manter a constraint:** a regra de negócio não pode depender só de um banco específico (se o banco mudar, a regra continua no código), nem só do código (se algo gravar sem passar pela API, o banco ainda recusa). A violação da constraint (erro `23P01`) também vira **409**, e o log informa qual camada barrou o conflito.
+
+Os testes provam cada camada sozinha: com a constraint **removida**, 20 requisições simultâneas ainda geram exatamente 1 agendamento; e um `INSERT` direto no banco, sem passar pela API, é recusado pela constraint.
 
 ### 2. Regra de negócio isolada e testada primeiro
 
@@ -323,10 +355,10 @@ Com 30 exames e 5 médicos o Postgres já responde em milissegundos. O cache est
 
 - **TanStack Query** para estado do servidor (cache, loading, erro, refetch) e `useReducer` com reducer puro para o estado da tela. O reducer garante, por exemplo, que trocar o exame limpa o horário escolhido.
 - Cada etapa trata **loading, erro e vazio**; a disponibilidade se atualiza sozinha a cada 60 s.
-- **Conflito (409)**: o paciente volta para a escolha de horário com um aviso, a lista é recarregada e o nome digitado é preservado.
+- **Conflito (409)**: o paciente volta para a escolha de horário com um aviso, a lista é recarregada e os dados do paciente são preservados.
 - Dias em que o médico não atende já aparecem desabilitados.
 - **Acessibilidade**: inputs nativos (navegação por teclado e leitor de tela), foco gerenciado, contraste verificado. Auditoria com axe-core: 0 violações WCAG 2.1 AA.
-- Busca com debounce de 300 ms; build de produção com cerca de 86 KB (gzip).
+- Busca com debounce de 300 ms; build de produção com cerca de 89 KB (gzip).
 
 | Escolha da data | Horário ocupado por outra pessoa (409) | Celular |
 | --- | --- | --- |
@@ -338,6 +370,21 @@ Com 30 exames e 5 médicos o Postgres já responde em milissegundos. O cache est
 - O Compose sobe cada serviço só quando as dependências estão saudáveis.
 - O pipeline do GitHub Actions roda em todo PR. A `main` é protegida: só recebe código por PR com o CI verde.
 - Dependabot abre PRs semanais de atualização. As atualizações *major* são avaliadas uma a uma: três delas foram recusadas porque o CI mostrou que quebrariam o projeto, e as de `@types/node` porque os tipos precisam acompanhar o Node usado em produção (22).
+
+### 9. Identificação do paciente, consulta e cancelamento
+
+Inspirado no fluxo de agendamento de grandes redes de diagnóstico, o paciente se identifica e depois consegue consultar e cancelar o exame sozinho.
+
+- **Identificação**: CPF (com dígito verificador), data de nascimento, telefone com DDD e e-mail opcional. A validação existe nos dois lados: no front, para o paciente corrigir na hora; na API, porque ela pode ser chamada direto. O banco guarda só dígitos e tem `CHECK` de formato.
+- **Mínimo de dados na resposta (LGPD)**: o CPF volta sempre mascarado.
+- **Consulta por protocolo + CPF**, num `POST`: o CPF vai no corpo, e não na URL, para não ficar registrado em logs de servidor e no histórico do navegador. Errar o protocolo ou o CPF dá a mesma mensagem, para não confirmar que um protocolo existe.
+- **Cancelamento sem apagar** (*soft cancel*): o status vira `CANCELLED` com a data do cancelamento. O histórico fica preservado, a disponibilidade e a constraint passam a ignorar o agendamento, e o cache daquele dia é invalidado na hora.
+- **Idempotente**: cancelar duas vezes devolve o mesmo resultado. Se a resposta do primeiro pedido se perder, o paciente pode repetir sem erro.
+- No front, cancelar pede **confirmação** na própria tela, e o foco vai para a pergunta e depois para o resultado (leitores de tela anunciam o que mudou).
+
+| Consultar | Confirmar o cancelamento |
+| --- | --- |
+| ![](docs/screenshots/meu-agendamento.png) | ![](docs/screenshots/cancelar.png) |
 
 ---
 
@@ -354,6 +401,8 @@ Pontos que o enunciado deixa em aberto e como foram decididos:
 7. **Turnos não cruzam a meia-noite** (vale para todos os médicos do enunciado).
 8. **Nome do paciente**: de 3 a 120 caracteres, só letras (com acento), espaços, apóstrofo, hífen e ponto.
 9. **Janela de agendamento**: o front oferece os próximos 60 dias. A API não impõe limite superior.
+10. **Protocolo**: os 8 primeiros caracteres do id (UUID), em maiúsculas. Sozinho não dá acesso a nada: a consulta sempre exige o CPF junto.
+11. **Cancelamento**: permitido até o início do exame. Não há prazo mínimo de antecedência, porque o enunciado não define um.
 
 ---
 
@@ -361,10 +410,12 @@ Pontos que o enunciado deixa em aberto e como foram decididos:
 
 Fora do escopo do desafio, mas o que eu faria num sistema real:
 
-- **Autenticação e cadastro de pacientes** (CPF, contato); hoje o agendamento guarda só o nome.
-- **Cancelar e remarcar** agendamentos; uma área do paciente para consultá-los.
+- **Rate limiting** nos endpoints de consulta e cancelamento (e no `POST /appointments`), para impedir que alguém tente adivinhar protocolos de um CPF conhecido. É o próximo passo de segurança mais importante.
+- **Login do paciente** e cadastro reaproveitável; hoje a identificação vai em cada agendamento.
+- **Remarcar** num passo só (hoje: cancelar e agendar de novo).
+- **Unidades, convênios e instruções de preparo** (ex.: jejum), como nos fluxos de grandes redes. Ficaram de fora porque dependem de dados que o enunciado não traz, e inventá-los seria pior que não ter.
+- **Confirmação por e-mail ou SMS** com o protocolo.
 - **Administração** de médicos, turnos e exames (hoje vêm do seed), incluindo feriados e bloqueios de agenda.
-- **Rate limiting** no `POST /appointments` e proteção contra abuso.
 - **Observabilidade**: logs estruturados (JSON), métricas e tracing.
 - **Teste de carga** (k6) para medir o ganho real do cache e o comportamento sob concorrência alta.
 - **Banco com dois perfis de acesso**: um com privilégios para migrations e outro restrito para a API em execução.

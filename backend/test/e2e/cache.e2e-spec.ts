@@ -1,7 +1,8 @@
 import {
-  CRM,
   createTestApp,
+  CRM,
   EXAM,
+  PATIENT,
   TODAY,
   TOMORROW,
   type TestApp,
@@ -27,12 +28,16 @@ describe('Cache de leitura (e2e)', () => {
     body.slots.map((slot) => slot.time);
 
   const book = (doctorId: number, startsAt: string) =>
-    t.http().post('/api/appointments').send({
-      patientName: 'Maria da Silva',
-      examId: EXAM.ULTRASSOM_ABDOMINAL_40,
-      doctorId,
-      startsAt,
-    });
+    t
+      .http()
+      .post('/api/appointments')
+      .send({
+        ...PATIENT,
+        patientName: 'Maria da Silva',
+        examId: EXAM.ULTRASSOM_ABDOMINAL_40,
+        doctorId,
+        startsAt,
+      });
 
   beforeAll(async () => {
     t = await createTestApp();

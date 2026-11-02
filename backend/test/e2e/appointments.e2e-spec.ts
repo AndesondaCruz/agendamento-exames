@@ -1,7 +1,8 @@
 import {
-  CRM,
   createTestApp,
+  CRM,
   EXAM,
+  PATIENT,
   TODAY,
   TOMORROW,
   type TestApp,
@@ -17,6 +18,7 @@ describe('POST /api/appointments (e2e)', () => {
       .http()
       .post('/api/appointments')
       .send({
+        ...PATIENT,
         patientName: 'Maria da Silva',
         examId: EXAM.ULTRASSOM_ABDOMINAL_40,
         doctorId: helena,
@@ -56,6 +58,44 @@ describe('POST /api/appointments (e2e)', () => {
         patientName: '  Maria   da  Silva ',
       }).expect(201);
       expect(body.patientName).toBe('Maria da Silva');
+    });
+
+    it('guarda a identificação só com dígitos e devolve o CPF mascarado', async () => {
+      const { body } = await book({
+        patientEmail: '  Maria.Silva@Email.COM ',
+      }).expect(201);
+
+      expect(body.patientCpfMasked).toBe('***.982.247-**');
+
+      // Minimização de dados: nenhum dado pessoal completo volta na resposta.
+      const json = JSON.stringify(body);
+      for (const secret of ['52998224725', '85987654321', '1990-05-20']) {
+        expect(json).not.toContain(secret);
+      }
+
+      const [row] = await t.dataSource.query<
+        Array<{
+          patient_cpf: string;
+          patient_phone: string;
+          patient_email: string;
+        }>
+      >(
+        'SELECT patient_cpf, patient_phone, patient_email FROM appointments WHERE id = $1',
+        [body.id],
+      );
+      expect(row).toEqual({
+        patient_cpf: '52998224725',
+        patient_phone: '85987654321',
+        patient_email: 'maria.silva@email.com',
+      });
+    });
+
+    it('o e-mail é opcional', async () => {
+      await book({ patientEmail: undefined }).expect(201);
+      await book({
+        patientEmail: '',
+        startsAt: `${TOMORROW}T08:40:00-03:00`,
+      }).expect(201);
     });
 
     it('GET /api/appointments/:id devolve o agendamento criado', async () => {
@@ -149,6 +189,28 @@ describe('POST /api/appointments (e2e)', () => {
         { patientName: '<script>alert(1)</script>' },
         'patientName',
       ],
+      [
+        'CPF com dígito verificador errado',
+        { patientCpf: '529.982.247-24' },
+        'patientCpf',
+      ],
+      [
+        'CPF com todos os dígitos iguais',
+        { patientCpf: '111.111.111-11' },
+        'patientCpf',
+      ],
+      ['telefone sem DDD', { patientPhone: '98765-4321' }, 'patientPhone'],
+      [
+        'nascimento no futuro',
+        { patientBirthDate: '2999-01-01' },
+        'patientBirthDate',
+      ],
+      [
+        'nascimento inexistente',
+        { patientBirthDate: '1990-02-31' },
+        'patientBirthDate',
+      ],
+      ['e-mail inválido', { patientEmail: 'maria@' }, 'patientEmail'],
       ['examId como texto', { examId: '7' }, 'examId'],
       ['startsAt sem fuso', { startsAt: `${TOMORROW}T08:00:00` }, 'startsAt'],
       ['startsAt inválido', { startsAt: 'amanhã às 8' }, 'startsAt'],
@@ -179,6 +241,9 @@ describe('POST /api/appointments (e2e)', () => {
       expect(fields).toEqual(
         expect.arrayContaining([
           'patientName',
+          'patientCpf',
+          'patientBirthDate',
+          'patientPhone',
           'examId',
           'doctorId',
           'startsAt',

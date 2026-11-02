@@ -19,8 +19,18 @@ import { ApiErrorResponse } from '../common/http/api-error.decorator.js';
 import { AppointmentsService } from './appointments.service.js';
 import { AppointmentResponse } from './dto/appointment.response.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
+import {
+  CancelAppointmentDto,
+  LookupAppointmentDto,
+} from './dto/manage-appointment.dto.js';
 
 const PATH = '/api/appointments';
+
+const LOOKUP_NOT_FOUND = {
+  code: ErrorCode.NOT_FOUND,
+  message:
+    'Nenhum agendamento encontrado com esse protocolo e CPF. Confira os dados.',
+};
 
 @ApiTags('Agendamentos')
 @Controller('appointments')
@@ -88,6 +98,71 @@ export class AppointmentsController {
   )
   create(@Body() dto: CreateAppointmentDto): Promise<AppointmentResponse> {
     return this.appointmentsService.create(dto);
+  }
+
+  @Post('lookup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Consulta um agendamento pelo protocolo e CPF',
+    description:
+      'POST e não GET: o CPF vai no corpo, para não ficar registrado em URLs e logs.',
+  })
+  @ApiOkResponse({ type: AppointmentResponse })
+  @ApiErrorResponse(400, `${PATH}/lookup`, 'Protocolo ou CPF inválidos', [
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'Dados inválidos na requisição.',
+      details: [{ field: 'patientCpf', messages: ['patientCpf inválido.'] }],
+    },
+  ])
+  @ApiErrorResponse(
+    404,
+    `${PATH}/lookup`,
+    'Protocolo e CPF não correspondem a um agendamento',
+    [LOOKUP_NOT_FOUND],
+  )
+  lookup(@Body() dto: LookupAppointmentDto): Promise<AppointmentResponse> {
+    return this.appointmentsService.lookup(dto.protocol, dto.patientCpf);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancela um agendamento e libera o horário',
+    description:
+      'Exige o CPF do paciente. Não apaga o registro: o status vira CANCELLED. Cancelar de novo devolve o mesmo resultado (idempotente).',
+  })
+  @ApiOkResponse({ type: AppointmentResponse })
+  @ApiErrorResponse(400, `${PATH}/{id}/cancel`, 'Id ou CPF inválidos', [
+    {
+      code: ErrorCode.VALIDATION_ERROR,
+      message: 'Dados inválidos na requisição.',
+      details: [{ field: 'patientCpf', messages: ['patientCpf inválido.'] }],
+    },
+  ])
+  @ApiErrorResponse(
+    404,
+    `${PATH}/{id}/cancel`,
+    'Agendamento inexistente ou CPF não confere',
+    [LOOKUP_NOT_FOUND],
+  )
+  @ApiErrorResponse(
+    422,
+    `${PATH}/{id}/cancel`,
+    'O exame já começou ou já passou',
+    [
+      {
+        code: ErrorCode.CANCELLATION_NOT_ALLOWED,
+        message:
+          'Não é possível cancelar um exame que já começou ou já passou.',
+      },
+    ],
+  )
+  cancel(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: CancelAppointmentDto,
+  ): Promise<AppointmentResponse> {
+    return this.appointmentsService.cancel(id, dto.patientCpf);
   }
 
   @Get(':id')

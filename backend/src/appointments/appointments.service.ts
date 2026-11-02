@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import type { Env } from '../config/env.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
@@ -14,15 +14,24 @@ import {
   parseClinicDay,
 } from '../common/time/clinic-calendar.js';
 import { DoctorsService } from '../doctors/doctors.service.js';
+import { Doctor } from '../doctors/entities/doctor.entity.js';
 import { ExamsService } from '../exams/exams.service.js';
 import { AvailabilityService } from './availability.service.js';
-import { generateSlots } from './domain/slot-generator.js';
+import { generateSlots, overlaps } from './domain/slot-generator.js';
 import { AppointmentResponse } from './dto/appointment.response.js';
 import type { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import {
   Appointment,
   APPOINTMENT_NO_OVERLAP_CONSTRAINT,
+  AppointmentStatus,
 } from './entities/appointment.entity.js';
+
+/** Conflito detectado pela regra do código (camada 1), dentro da transação. */
+class SlotTakenError extends Error {
+  constructor(readonly layer: 'código') {
+    super('Horário ocupado');
+  }
+}
 
 @Injectable()
 export class AppointmentsService {
@@ -32,6 +41,7 @@ export class AppointmentsService {
   constructor(
     @InjectRepository(Appointment)
     private readonly appointmentsRepository: Repository<Appointment>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly doctorsService: DoctorsService,
     private readonly examsService: ExamsService,
     private readonly clock: Clock,
@@ -52,9 +62,14 @@ export class AppointmentsService {
    *  4. está na grade de horários do exame   -> 422 SLOT_NOT_ON_GRID
    *  5. não sobrepõe outro agendamento       -> 409 SLOT_UNAVAILABLE
    *
-   * A regra 5 NÃO é checada com um SELECT antes do INSERT: entre o SELECT e o
-   * INSERT outra requisição poderia reservar o horário (race condition).
-   * Quem garante é a exclusion constraint, atomicamente, dentro do Postgres.
+   * A regra 5 tem DUAS camadas de defesa:
+   *  - no código: dentro de uma transação, trava a linha do médico
+   *    (SELECT ... FOR UPDATE) e só então confere a sobreposição. Pedidos
+   *    para o MESMO médico passam a ser processados um de cada vez, então
+   *    não existe a janela entre "consultar" e "gravar". Funciona em
+   *    qualquer banco relacional que tenha FOR UPDATE (Postgres, MySQL...);
+   *  - no banco: a exclusion constraint recusa a sobreposição mesmo que
+   *    algo escape do código (um bug, um script, outra aplicação).
    */
   async create(dto: CreateAppointmentDto): Promise<AppointmentResponse> {
     const [exam, doctor] = await Promise.all([
@@ -104,16 +119,50 @@ export class AppointmentsService {
       );
     }
 
+    const requested = {
+      start: startMinute,
+      end: startMinute + exam.durationMinutes,
+    };
+
     try {
-      const appointment = await this.appointmentsRepository.save(
-        this.appointmentsRepository.create({
-          patientName: dto.patientName,
-          examId: exam.id,
-          doctorId: doctor.id,
-          startsAt,
-          endsAt,
-        }),
-      );
+      const appointment = await this.dataSource.transaction(async (manager) => {
+        // Camada 1, no código. O lock dura até o fim da transação: um
+        // segundo pedido para o mesmo médico espera aqui, e quando segue
+        // já enxerga o agendamento que o primeiro gravou.
+        await manager
+          .getRepository(Doctor)
+          .createQueryBuilder('doctor')
+          .setLock('pessimistic_write')
+          .where('doctor.id = :id', { id: doctor.id })
+          .getOne();
+
+        // A MESMA consulta e a MESMA função `overlaps` da disponibilidade:
+        // o que a tela mostra como livre é exatamente o que a API aceita.
+        const busy = await this.availabilityService.findBusyRanges(
+          doctor.id,
+          day,
+          manager,
+        );
+        if (busy.some((range) => overlaps(requested, range))) {
+          throw new SlotTakenError('código');
+        }
+
+        return manager.save(
+          manager.create(Appointment, {
+            patientName: dto.patientName,
+            patientCpf: dto.patientCpf,
+            patientBirthDate: dto.patientBirthDate,
+            patientPhone: dto.patientPhone,
+            patientEmail: dto.patientEmail ?? null,
+            status: AppointmentStatus.SCHEDULED,
+            cancelledAt: null,
+            examId: exam.id,
+            doctorId: doctor.id,
+            startsAt,
+            endsAt,
+          }),
+        );
+      });
 
       this.logger.log(
         `Agendamento ${appointment.id} criado: médico ${doctor.id}, exame ${exam.id}, ${startsAt.toISOString()}`,
@@ -124,7 +173,18 @@ export class AppointmentsService {
 
       return AppointmentResponse.from(appointment, exam, doctor, this.timezone);
     } catch (error) {
-      if (isExclusionViolation(error, APPOINTMENT_NO_OVERLAP_CONSTRAINT)) {
+      // Camada 2, no banco: a constraint barra o que escapar da camada 1.
+      const layer =
+        error instanceof SlotTakenError
+          ? error.layer
+          : isExclusionViolation(error, APPOINTMENT_NO_OVERLAP_CONSTRAINT)
+            ? 'banco'
+            : null;
+
+      if (layer) {
+        this.logger.warn(
+          `Conflito de horário barrado pela regra do ${layer}: médico ${doctor.id}, ${startsAt.toISOString()}`,
+        );
         // Se houve conflito, o paciente viu uma agenda desatualizada.
         // Invalida por garantia antes de ele escolher outro horário.
         await this.availabilityService.invalidate(doctor.id, date);
@@ -135,6 +195,86 @@ export class AppointmentsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Consulta pelo protocolo (8 primeiros caracteres do id) + CPF.
+   * A mensagem de "não encontrado" é a mesma se errar o protocolo ou o CPF:
+   * ela não confirma para um curioso que aquele protocolo existe.
+   */
+  async lookup(protocol: string, cpf: string): Promise<AppointmentResponse> {
+    const appointment = await this.appointmentsRepository
+      .createQueryBuilder('appointment')
+      .leftJoinAndSelect('appointment.exam', 'exam')
+      .leftJoinAndSelect('appointment.doctor', 'doctor')
+      // O protocolo foi validado no DTO (8 caracteres hexadecimais), e mesmo
+      // assim vai como parâmetro, nunca concatenado no SQL.
+      .where('appointment.id::text LIKE :prefix', { prefix: `${protocol}%` })
+      .andWhere('appointment.patientCpf = :cpf', { cpf })
+      .orderBy('appointment.createdAt', 'DESC')
+      .getOne();
+
+    if (!appointment) throw this.lookupNotFound();
+
+    return AppointmentResponse.from(
+      appointment,
+      appointment.exam,
+      appointment.doctor,
+      this.timezone,
+    );
+  }
+
+  /**
+   * Cancela sem apagar: o status vira CANCELLED e o horário volta a ficar
+   * livre (a constraint e a disponibilidade só consideram os agendados).
+   * Cancelar de novo devolve o mesmo resultado (idempotente): se a resposta
+   * do primeiro pedido se perder, o paciente pode repetir sem erro.
+   */
+  async cancel(id: string, cpf: string): Promise<AppointmentResponse> {
+    const appointment = await this.appointmentsRepository.findOne({
+      where: { id },
+      relations: { exam: true, doctor: true },
+    });
+
+    // CPF errado = "não encontrado", pelo mesmo motivo da consulta.
+    if (!appointment || appointment.patientCpf !== cpf) {
+      throw this.lookupNotFound();
+    }
+
+    if (appointment.status === AppointmentStatus.SCHEDULED) {
+      if (appointment.startsAt.getTime() <= this.clock.now().getTime()) {
+        throw AppException.businessRule(
+          ErrorCode.CANCELLATION_NOT_ALLOWED,
+          'Não é possível cancelar um exame que já começou ou já passou.',
+        );
+      }
+
+      appointment.status = AppointmentStatus.CANCELLED;
+      appointment.cancelledAt = this.clock.now();
+      await this.appointmentsRepository.save(appointment);
+
+      this.logger.log(`Agendamento ${appointment.id} cancelado.`);
+
+      // O horário foi liberado: a disponibilidade daquele dia mudou.
+      await this.availabilityService.invalidate(
+        appointment.doctorId,
+        clinicDateOf(appointment.startsAt, this.timezone),
+      );
+    }
+
+    return AppointmentResponse.from(
+      appointment,
+      appointment.exam,
+      appointment.doctor,
+      this.timezone,
+    );
+  }
+
+  private lookupNotFound(): AppException {
+    return AppException.notFound(
+      ErrorCode.NOT_FOUND,
+      'Nenhum agendamento encontrado com esse protocolo e CPF. Confira os dados.',
+    );
   }
 
   async findById(id: string): Promise<AppointmentResponse> {

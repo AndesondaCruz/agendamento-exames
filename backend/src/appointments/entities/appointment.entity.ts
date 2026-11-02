@@ -19,11 +19,21 @@ import { Exam } from '../../exams/entities/exam.entity.js';
  */
 export const APPOINTMENT_NO_OVERLAP_CONSTRAINT = 'appointments_no_overlap';
 
+/** Cancelar não apaga: o agendamento muda de status e o histórico fica. */
+export const AppointmentStatus = {
+  SCHEDULED: 'SCHEDULED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type AppointmentStatus =
+  (typeof AppointmentStatus)[keyof typeof AppointmentStatus];
+
 @Entity('appointments')
 /**
  * Garantia de "sem sobreposição" no nível do banco:
  * para o MESMO médico (doctor_id WITH =), nenhum par de intervalos
- * [starts_at, ends_at) pode se cruzar (&&).
+ * [starts_at, ends_at) pode se cruzar (&&), entre os agendamentos ATIVOS.
+ * Um cancelado não ocupa mais o horário, então fica fora da regra (WHERE).
  *
  * '[)' = intervalo semiaberto: 09:20–10:00 e 10:00–10:40 NÃO colidem.
  * Isso protege inclusive contra requisições simultâneas, porque a checagem
@@ -31,9 +41,15 @@ export const APPOINTMENT_NO_OVERLAP_CONSTRAINT = 'appointments_no_overlap';
  */
 @Exclusion(
   APPOINTMENT_NO_OVERLAP_CONSTRAINT,
-  `USING gist ("doctor_id" WITH =, tstzrange("starts_at", "ends_at", '[)') WITH &&)`,
+  `USING gist ("doctor_id" WITH =, tstzrange("starts_at", "ends_at", '[)') WITH &&) WHERE ("status" = 'SCHEDULED')`,
 )
 @Check('appointments_valid_interval', '"starts_at" < "ends_at"')
+@Check('appointments_status_valid', `"status" IN ('SCHEDULED', 'CANCELLED')`)
+@Check('appointments_patient_cpf_digits', `"patient_cpf" ~ '^[0-9]{11}$'`)
+@Check(
+  'appointments_patient_phone_digits',
+  `"patient_phone" ~ '^[0-9]{10,11}$'`,
+)
 @Index(['doctorId', 'startsAt'])
 export class Appointment {
   @PrimaryGeneratedColumn('uuid')
@@ -41,6 +57,37 @@ export class Appointment {
 
   @Column({ name: 'patient_name', type: 'varchar', length: 120 })
   patientName: string;
+
+  /*
+   * Dados de identificação, adicionados numa versão posterior. São
+   * obrigatórios na API para todo agendamento novo, mas aceitam NULL no
+   * banco: agendamentos feitos antes desta versão não têm esses dados, e
+   * a migration não pode inventá-los.
+   */
+
+  /** Só os 11 dígitos, sem pontuação. */
+  @Column({ name: 'patient_cpf', type: 'char', length: 11, nullable: true })
+  patientCpf: string | null;
+
+  @Column({ name: 'patient_birth_date', type: 'date', nullable: true })
+  patientBirthDate: string | null;
+
+  /** Só os dígitos, com DDD (10 ou 11). */
+  @Column({
+    name: 'patient_phone',
+    type: 'varchar',
+    length: 11,
+    nullable: true,
+  })
+  patientPhone: string | null;
+
+  @Column({
+    name: 'patient_email',
+    type: 'varchar',
+    length: 254,
+    nullable: true,
+  })
+  patientEmail: string | null;
 
   @Column({ name: 'doctor_id', type: 'int' })
   doctorId: number;
@@ -69,4 +116,14 @@ export class Appointment {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: AppointmentStatus.SCHEDULED,
+  })
+  status: AppointmentStatus;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
 }
