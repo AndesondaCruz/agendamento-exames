@@ -74,6 +74,18 @@ describe('Swagger / OpenAPI (e2e)', () => {
     }
   });
 
+  it('as rotas com rate limiting documentam o 429', () => {
+    for (const [path, method] of [
+      ['/api/appointments', 'post'],
+      ['/api/appointments/lookup', 'post'],
+      ['/api/appointments/{id}/cancel', 'post'],
+    ] as const) {
+      expect(exampleCodes(path, method, '429')).toEqual(['TOO_MANY_REQUESTS']);
+    }
+    // Rotas sem limite não prometem um 429 que nunca devolvem.
+    expect(doc.paths['/api/exams']?.get?.responses['429']).toBeUndefined();
+  });
+
   it('o agendamento documenta cada código de erro possível', () => {
     expect(exampleCodes('/api/appointments', 'post', '409')).toEqual([
       'SLOT_UNAVAILABLE',

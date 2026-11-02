@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { ApiErrorResponse } from '../common/http/api-error.decorator.js';
+import { RateLimit } from '../common/rate-limit/rate-limit.js';
 import { AppointmentsService } from './appointments.service.js';
 import { AppointmentResponse } from './dto/appointment.response.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
@@ -32,12 +33,21 @@ const LOOKUP_NOT_FOUND = {
     'Nenhum agendamento encontrado com esse protocolo e CPF. Confira os dados.',
 };
 
+const TOO_MANY_REQUESTS_DESCRIPTION =
+  'Limite de requisições por IP excedido. O cabeçalho Retry-After diz em quantos segundos tentar de novo.';
+
+const TOO_MANY_REQUESTS = {
+  code: ErrorCode.TOO_MANY_REQUESTS,
+  message: 'Muitas tentativas. Aguarde 42 segundos e tente novamente.',
+};
+
 @ApiTags('Agendamentos')
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Post()
+  @RateLimit('create')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Agenda um exame com um médico em um horário disponível',
@@ -96,11 +106,15 @@ export class AppointmentsController {
       },
     ],
   )
+  @ApiErrorResponse(429, PATH, TOO_MANY_REQUESTS_DESCRIPTION, [
+    TOO_MANY_REQUESTS,
+  ])
   create(@Body() dto: CreateAppointmentDto): Promise<AppointmentResponse> {
     return this.appointmentsService.create(dto);
   }
 
   @Post('lookup')
+  @RateLimit('lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Consulta um agendamento pelo protocolo e CPF',
@@ -121,11 +135,15 @@ export class AppointmentsController {
     'Protocolo e CPF não correspondem a um agendamento',
     [LOOKUP_NOT_FOUND],
   )
+  @ApiErrorResponse(429, `${PATH}/lookup`, TOO_MANY_REQUESTS_DESCRIPTION, [
+    TOO_MANY_REQUESTS,
+  ])
   lookup(@Body() dto: LookupAppointmentDto): Promise<AppointmentResponse> {
     return this.appointmentsService.lookup(dto.protocol, dto.patientCpf);
   }
 
   @Post(':id/cancel')
+  @RateLimit('cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Cancela um agendamento e libera o horário',
@@ -158,6 +176,9 @@ export class AppointmentsController {
       },
     ],
   )
+  @ApiErrorResponse(429, `${PATH}/{id}/cancel`, TOO_MANY_REQUESTS_DESCRIPTION, [
+    TOO_MANY_REQUESTS,
+  ])
   cancel(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: CancelAppointmentDto,

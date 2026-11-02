@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Express } from 'express';
 import helmet from 'helmet';
 import type { Env } from './config/env.js';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter.js';
@@ -15,6 +16,13 @@ export const API_PREFIX = 'api';
  */
 export function configureApp(app: INestApplication): void {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
+
+  // Atrás de um proxy, o IP da conexão é o do proxy. Com isto o Express lê o
+  // IP do cliente no X-Forwarded-For, mas só confia nos N últimos saltos:
+  // o que o cliente escrever antes disso é ignorado (não dá para forjar o IP
+  // e escapar do rate limiting). Veja TRUST_PROXY_HOPS em config/env.ts.
+  const express: Express = app.getHttpAdapter().getInstance();
+  express.set('trust proxy', config.get('TRUST_PROXY_HOPS', { infer: true }));
 
   app.setGlobalPrefix(API_PREFIX);
   app.use(helmet()); // cabeçalhos de segurança (X-Content-Type-Options, HSTS, etc.)

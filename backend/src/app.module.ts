@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppointmentsModule } from './appointments/appointments.module.js';
 import { CacheModule } from './common/cache/cache.module.js';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module.js';
 import { TimeModule } from './common/time/time.module.js';
 import { validateEnv, type Env } from './config/env.js';
 import { buildTypeOrmOptions } from './database/typeorm.options.js';
@@ -27,6 +28,7 @@ import { HealthController } from './health/health.controller.js';
     }),
     TimeModule,
     CacheModule,
+    RateLimitModule,
     ExamsModule,
     DoctorsModule,
     AppointmentsModule,

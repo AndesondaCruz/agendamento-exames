@@ -8,6 +8,10 @@ import {
   CacheStore,
   MemoryCacheStore,
 } from '../../src/common/cache/cache-store.js';
+import {
+  RATE_LIMIT_CONFIG,
+  type RateLimitBucket,
+} from '../../src/common/rate-limit/rate-limit.js';
 import { Clock, FixedClock } from '../../src/common/time/clock.js';
 
 /**
@@ -38,18 +42,36 @@ export interface TestAppOptions {
    * RedisCacheStore aqui.
    */
   cacheStore?: CacheStore;
+  /**
+   * Troca os limites do rate limiting (o limitador real continua ligado).
+   * Sem isto valem os limites altos do vitest.config.e2e.ts.
+   */
+  rateLimit?: {
+    windowSeconds?: number;
+    limits?: Partial<Record<RateLimitBucket, number>>;
+  };
 }
 
 export async function createTestApp({
   now = NOW,
   cacheStore = new MemoryCacheStore(),
+  rateLimit,
 }: TestAppOptions = {}): Promise<TestApp> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(Clock)
     .useValue(new FixedClock(now))
     .overrideProvider(CacheStore)
-    .useValue(cacheStore)
-    .compile();
+    .useValue(cacheStore);
+
+  if (rateLimit) {
+    const HIGH = 100_000;
+    builder.overrideProvider(RATE_LIMIT_CONFIG).useValue({
+      windowSeconds: rateLimit.windowSeconds ?? 60,
+      limits: { create: HIGH, lookup: HIGH, cancel: HIGH, ...rateLimit.limits },
+    });
+  }
+
+  const moduleRef = await builder.compile();
 
   const app = moduleRef.createNestApplication({ logger: ['error'] });
   configureApp(app); // mesmos pipes, filtros e prefixo de produção

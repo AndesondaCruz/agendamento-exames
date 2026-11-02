@@ -66,8 +66,14 @@ services:
       RUN_SEED: "true"
       # Opcional: sem ela (ou vazia), a API usa cache em memória.
       REDIS_URL: redis://redis:6379
+      # Proxies confiáveis entre o cliente e a API (aqui, só o Nginx do "web").
+      # Define de onde sai o IP do cliente no rate limiting. Veja o README.
+      TRUST_PROXY_HOPS: "1"
     ports:
-      - "3000:3000"
+      # Só a própria máquina acessa a API direto (Swagger, curl). Quem vem de
+      # fora passa pelo Nginx (8080). Aberta para a rede, qualquer um poderia
+      # forjar o X-Forwarded-For e escapar do rate limiting.
+      - "127.0.0.1:3000:3000"
     depends_on:
       postgres:
         # Espera o banco ACEITAR conexões, não só o container iniciar.
