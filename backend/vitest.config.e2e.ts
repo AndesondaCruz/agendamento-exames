@@ -23,6 +23,12 @@ export default defineConfig({
       DATABASE_URL: TEST_DATABASE_URL,
       DATABASE_SSL: 'false',
       CLINIC_TIMEZONE: 'America/Sao_Paulo',
+      // Limitador LIGADO, com limites altos: os testes que disparam dezenas de
+      // pedidos do mesmo IP não esbarram nele. O teste do 429 usa limites
+      // baixos (veja rate-limit.e2e-spec.ts).
+      RATE_LIMIT_LOOKUP: '100000',
+      RATE_LIMIT_CANCEL: '100000',
+      RATE_LIMIT_CREATE: '100000',
     },
   },
 });

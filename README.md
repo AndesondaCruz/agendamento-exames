@@ -46,6 +46,8 @@ docker compose up --build --wait
 | API | http://localhost:3000/api |
 | Documentação da API (Swagger) | http://localhost:3000/api/docs |
 
+A API na porta `3000` só aceita conexões da própria máquina (`127.0.0.1`); quem vem de fora passa pelo Nginx, na `8080` (motivo na [decisão 10](#10-rate-limiting)).
+
 O container da API aplica as migrations e carrega o catálogo (30 exames e 5 médicos) sozinho ao subir. Para parar: `docker compose down` (acrescente `--volumes` para apagar também os dados).
 
 ### Opção 2: desenvolvimento local (com hot reload)
@@ -92,8 +94,8 @@ npm test
 
 | Pasta | Comando | O que roda | Quantidade |
 | --- | --- | --- | --- |
-| `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, CPF e telefone, parser do CSV, cache | 83 testes |
-| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 82 testes |
+| `backend` | `npm test` | Unitários: regra de horários, calendário/fuso, CPF e telefone, parser do CSV, cache | 94 testes |
+| `backend` | `npm run test:e2e` | API completa via HTTP contra **Postgres e Redis reais** | 89 testes |
 | `frontend` | `npm test` | Reducer, regras, fluxos completos de agendar, consultar e cancelar (Testing Library) e acessibilidade de cada tela (axe-core) | 67 testes |
 
 Os testes e2e usam um banco separado (`agendamento_test`, criado automaticamente pelo Docker na primeira subida) e se recusam a rodar em qualquer banco cujo nome não termine em `_test`.
@@ -201,6 +203,7 @@ Todo erro segue o mesmo formato, com um `code` estável (o cliente decide pelo `
 | 422 | `OUTSIDE_WORKING_HOURS` | O médico não atende ou o exame não cabe inteiro no turno |
 | 422 | `SLOT_NOT_ON_GRID` | Horário fora da grade do exame (a mensagem lista os horários válidos) |
 | 422 | `CANCELLATION_NOT_ALLOWED` | Cancelar um exame que já começou ou já passou |
+| 429 | `TOO_MANY_REQUESTS` | Limite de requisições por IP excedido (agendar, consultar ou cancelar). O cabeçalho `Retry-After` diz em quantos segundos tentar de novo |
 | 500 | `INTERNAL_ERROR` | Erro inesperado (detalhes só no log, nunca na resposta) |
 
 A separação entre **422** e **409** é intencional: 422 é uma requisição que nunca seria válida; 409 é um conflito de estado, e tentar outro horário resolve.
@@ -388,6 +391,27 @@ Inspirado no fluxo de agendamento de grandes redes de diagnóstico, o paciente s
 | --- | --- |
 | ![](docs/screenshots/meu-agendamento.png) | ![](docs/screenshots/cancelar.png) |
 
+### 10. Rate limiting
+
+Consultar e cancelar recebem um CPF, então alguém poderia tentar descobrir agendamentos de outras pessoas em massa. A API limita quantas requisições cada IP faz por janela de tempo.
+
+| Rota | Limite por IP (padrão) | Variável |
+| --- | --- | --- |
+| `POST /appointments/lookup` | 10 por minuto | `RATE_LIMIT_LOOKUP` |
+| `POST /appointments/:id/cancel` | 10 por minuto | `RATE_LIMIT_CANCEL` |
+| `POST /appointments` | 100 por minuto | `RATE_LIMIT_CREATE` |
+
+A janela é `RATE_LIMIT_WINDOW_SECONDS` (60). Cada rota tem o **seu contador**: consultar não gasta o limite de cancelar, e as demais rotas (exames, médicos, horários, saúde) não são limitadas. Ao estourar, a resposta é **429** no formato de erro da API (`TOO_MANY_REQUESTS`), com o cabeçalho `Retry-After` em segundos.
+
+- **O limitador roda antes da validação do corpo**, então requisições inválidas também gastam o limite.
+- **De onde vem o IP**: atrás de um proxy, o IP da conexão é o do proxy. A API lê o `X-Forwarded-For`, mas **só confia nos últimos `TRUST_PROXY_HOPS` saltos** (padrão `1`, o Nginx do Compose). O que o cliente escrever antes disso é ignorado, e por isso ele não consegue forjar o IP.
+- **`TRUST_PROXY_HOPS` depende de onde a API roda.** Em um deploy como o Render, a API fica atrás do proxy da plataforma (e não do nosso Nginx), e o número de saltos pode ser outro. Valor **menor** que o real: todos os clientes aparecem com o IP do proxy e dividem o mesmo limite. Valor **maior**: o cliente consegue forjar o IP e escapar do limite. Confira com a documentação da plataforma e ajuste a variável. Use `0` quando a API receber conexões diretas.
+- **Porta 3000 só local**: por isso o Compose a publica em `127.0.0.1`. Aberta para a rede, qualquer um poderia chamar a API sem passar pelo Nginx, escrevendo um `X-Forwarded-For` falso para cada requisição.
+- **Contador em memória**: simples e sem dependência extra, mas cada instância da API conta sozinha. Com várias réplicas, o limite efetivo seria (limite × instâncias); nesse cenário o contador deve ficar no Redis, que o projeto já usa para o cache.
+- Todas as variáveis estão documentadas em [`backend/.env.example`](backend/.env.example) e são validadas no boot: um valor inválido (`TRUST_PROXY_HOPS=abc`, limite `0`) impede a API de subir, e variável vazia vale como ausente.
+
+Nos testes e2e o limitador fica **ligado**, com limites altos na configuração de teste; o teste do 429 usa limites baixos e exercita o mesmo código de produção.
+
 ---
 
 ## Premissas
@@ -412,7 +436,7 @@ Pontos que o enunciado deixa em aberto e como foram decididos:
 
 Fora do escopo do desafio, mas o que eu faria num sistema real:
 
-- **Rate limiting** nos endpoints de consulta e cancelamento (e no `POST /appointments`), para impedir que alguém tente adivinhar protocolos de um CPF conhecido. É o próximo passo de segurança mais importante.
+- **Rate limiting distribuído e por CPF**: hoje o limite é por IP e o contador fica na memória de cada instância (veja a [decisão 10](#10-rate-limiting)). Com várias réplicas da API, o contador deve ir para o Redis; e um limite também por CPF protegeria contra quem troca de IP.
 - **Login do paciente** e cadastro reaproveitável; hoje a identificação vai em cada agendamento.
 - **Remarcar** num passo só (hoje: cancelar e agendar de novo).
 - **Unidades, convênios e instruções de preparo** (ex.: jejum), como nos fluxos de grandes redes. Ficaram de fora porque dependem de dados que o enunciado não traz, e inventá-los seria pior que não ter.
