@@ -32,7 +32,7 @@ Aplicação full stack para agendar exames de imagem: o paciente **busca o exame
 
 ### Opção 1: Docker (recomendado, um comando)
 
-Pré-requisito: Docker com Compose v2. As portas `8080`, `3000`, `5432` e `6379` precisam estar livres.
+Pré-requisito: Docker com Compose v2. As portas `8080`, `3000`, `5432` e `6379` precisam estar livres. Só a `8080` (o Nginx) é acessível pela rede; as outras três respondem apenas na própria máquina (`127.0.0.1`).
 
 ```bash
 git clone https://github.com/AndesondaCruz/agendamento-exames.git
@@ -407,6 +407,7 @@ A janela é `RATE_LIMIT_WINDOW_SECONDS` (60). Cada rota tem o **seu contador**: 
 - **De onde vem o IP**: atrás de um proxy, o IP da conexão é o do proxy. A API lê o `X-Forwarded-For`, mas **só confia nos últimos `TRUST_PROXY_HOPS` saltos** (padrão `1`, o Nginx do Compose). O que o cliente escrever antes disso é ignorado, e por isso ele não consegue forjar o IP.
 - **`TRUST_PROXY_HOPS` depende de onde a API roda.** Em um deploy como o Render, a API fica atrás do proxy da plataforma (e não do nosso Nginx), e o número de saltos pode ser outro. Valor **menor** que o real: todos os clientes aparecem com o IP do proxy e dividem o mesmo limite. Valor **maior**: o cliente consegue forjar o IP e escapar do limite. Confira com a documentação da plataforma e ajuste a variável. Use `0` quando a API receber conexões diretas.
 - **Porta 3000 só local**: por isso o Compose a publica em `127.0.0.1`. Aberta para a rede, qualquer um poderia chamar a API sem passar pelo Nginx, escrevendo um `X-Forwarded-For` falso para cada requisição.
+- **Postgres e Redis também só locais** (`127.0.0.1:5432` e `127.0.0.1:6379`): o banco usa usuário e senha de desenvolvimento (`app`/`app`) e o Redis não tem senha, então abertos para a rede qualquer um nela os alcançaria. A API e o Nginx falam com eles pela rede interna do Compose, que não depende dessas portas; elas existem para o desenvolvimento local (`npm run start:dev`, testes e2e) e para clientes como o DBeaver na própria máquina. Para acessar de outro computador, use um túnel SSH.
 - **Contador em memória**: simples e sem dependência extra, mas cada instância da API conta sozinha. Com várias réplicas, o limite efetivo seria (limite × instâncias); nesse cenário o contador deve ficar no Redis, que o projeto já usa para o cache.
 - Todas as variáveis estão documentadas em [`backend/.env.example`](backend/.env.example) e são validadas no boot: um valor inválido (`TRUST_PROXY_HOPS=abc`, limite `0`) impede a API de subir, e variável vazia vale como ausente.
 

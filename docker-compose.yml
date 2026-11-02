@@ -15,7 +15,10 @@ services:
       POSTGRES_PASSWORD: app
       POSTGRES_DB: agendamento
     ports:
-      - "5432:5432"
+      # Só a própria máquina (dev local, e2e, DBeaver). A API fala com o banco
+      # pela rede interna do Compose, que não usa esta porta. A senha é de
+      # desenvolvimento: aberta para a rede, qualquer um alcançaria o banco.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Scripts .sql daqui rodam na primeira inicialização (cria o banco de teste).
@@ -45,7 +48,8 @@ services:
       - --maxmemory-policy
       - volatile-ttl
     ports:
-      - "6379:6379"
+      # Só a própria máquina, pelo mesmo motivo do Postgres: o Redis não tem senha.
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
